@@ -384,3 +384,151 @@ table.table {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* =======================================================================
+   SIAGAKU UI ENHANCEMENTS (profile editing, support tabs, animations)
+   One appended block so it can be adjusted or removed to restore the old
+   look without hunting through the file above.
+   ======================================================================= */
+
+/* ---- Modal: entrance / exit animation + close button ---- */
+.overlay {
+  animation: overlay-in 0.18s ease both;
+  &.leaving { animation: overlay-out 0.16s ease both; }
+  .modal {
+    position: relative;
+    animation: modal-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+    &.leaving { animation: modal-out 0.16s ease both; }
+    &.lg { max-width: 620px; }
+  }
+  .modal-x {
+    position: absolute; top: 14px; right: 14px; color: $muted;
+    &:hover { background: $surface; color: $text; }
+  }
+}
+@keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes overlay-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes modal-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(8px) scale(0.98); } }
+
+/* ---- Toast pop ---- */
+.toast { animation: toast-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ---- Support: centered view switch; sidebar stays stable ---- */
+/* The support <main> is a fixed-height column: tabs header on top, body below.
+   This keeps the frame identical whether you are on Laporan or Peta, so the
+   layout no longer jumps when you click between them. */
+.support-main {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;      /* matches .shell height; .main's own overflow is neutralised below */
+  min-height: 0;
+  overflow: hidden;
+}
+.support-switch {
+  flex: none;                 /* fixed header, never scrolls */
+  display: flex; justify-content: center;
+  padding: 18px 16px 12px;
+  border-bottom: 1px solid $surface;
+  background: $card;
+  z-index: 500;
+  .tabs { box-shadow: $shadow-sm; }
+  .tabs a { padding: 0 20px; transition: color 0.15s, background 0.15s; }
+}
+/* The scroll lives on the body, not on the whole main, so the tabs stay put. */
+.support-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+/* Reports view keeps the normal .page padding and scrolls inside support-body. */
+.support-body > .page { width: 100%; }
+/* Map view fills the area under the tabs exactly, with no page scroll. */
+.map-flush { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.map-flush .map-page { flex: 1; min-height: 0; }
+.map-flush .map-canvas { min-height: 0; }
+
+@media (max-width: 800px) {
+  /* On the stacked mobile shell the viewport-height trick would clip; let it grow. */
+  .support-main { height: auto; min-height: 60vh; overflow: visible; }
+  .support-body { overflow: visible; }
+  .map-flush { min-height: 70vh; }
+}
+
+/* Neutral loader shown while a support view loads. */
+.support-loading {
+  flex: 1; min-height: 240px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  color: $muted;
+  .msym { font-size: 32px; color: $primary; }
+  p { font-size: 14px; }
+}
+
+/* ---- Citizens table: profile data cells ---- */
+table.table {
+  .av.clickable { cursor: zoom-in; transition: transform 0.1s; &:hover { transform: scale(1.08); } }
+  .nowrap { white-space: nowrap; }
+  .addr {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; max-width: 220px; font-size: 13px; color: $muted;
+  }
+}
+
+/* ---- Profile preview modal ---- */
+.profile-view {
+  display: flex; gap: 18px; align-items: flex-start; margin-bottom: 16px;
+  .big-photo {
+    width: 120px; height: 120px; border-radius: 18px; object-fit: cover; flex: none;
+    background: $primary-fixed; box-shadow: $shadow-sm;
+    &.ph { display: grid; place-items: center; color: $primary-dark; font-weight: 700; font-size: 40px; }
+  }
+  dl {
+    flex: 1; min-width: 0; display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; margin: 0; font-size: 14px;
+    dt { color: $muted; } dd { margin: 0; word-break: break-word; }
+  }
+}
+@media (max-width: 520px) { .profile-view { flex-direction: column; align-items: center; dl { grid-template-columns: 100px 1fr; } } }
+
+/* ---- Table: avatar + stacked contact ---- */
+table.table {
+  .person .av { overflow: hidden; img.av, img { width: 100%; height: 100%; object-fit: cover; } }
+  .person img.av { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+  .stack { display: flex; flex-direction: column; gap: 2px; font-size: 13px;
+    span { display: inline-flex; align-items: center; gap: 6px; }
+    .muted { color: $muted; }
+    .msym { color: $muted; }
+  }
+  td .muted { color: $muted; }
+}
+
+/* ---- Profile modal: photo + 2-col grid ---- */
+.photo-edit {
+  display: flex; align-items: center; gap: 18px; margin-bottom: 20px;
+  padding: 16px; border-radius: 18px; background: $canvas; border: 1px solid $surface;
+}
+.photo-ring {
+  position: relative; width: 84px; height: 84px; border-radius: 50%; flex: none;
+  background: $primary-fixed; color: $primary-dark; display: grid; place-items: center;
+  overflow: hidden; box-shadow: $shadow-sm;
+  img { width: 100%; height: 100%; object-fit: cover; }
+  .ph { font-weight: 700; font-size: 26px; }
+  .photo-spin { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(255,255,255,0.7); color: $primary; }
+}
+.photo-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  .hint { flex-basis: 100%; color: $muted; font-size: 12px; margin-top: 2px; }
+}
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+@media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+
+/* ---- Row hover lift (subtle, informative on interaction) ---- */
+table.table tbody tr { transition: background 0.12s; }
+.rcard { transition: box-shadow 0.15s, transform 0.08s, border-color 0.15s; &:hover { transform: translateY(-1px); } }
+.btn.primary { transition: opacity 0.15s, transform 0.05s, box-shadow 0.15s; &:hover { box-shadow: 0 6px 18px rgba(29, 78, 216, 0.28); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay, .overlay .modal, .toast { animation: none !important; }
+  .rcard:hover { transform: none; }
+}

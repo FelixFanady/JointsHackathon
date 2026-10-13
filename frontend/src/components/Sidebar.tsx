@@ -35,7 +35,12 @@ export default function Sidebar({
       </div>
       <nav aria-label="Navigasi utama">
         {items.map((it) => {
-          const active = it.href === "/admin" ? path === "/admin" : path.startsWith(it.href);
+          const active =
+            it.href === "/admin"
+              ? path === "/admin"
+              : it.href === "/support/reports"
+                ? path.startsWith("/support") // "Konsol Support" covers both Laporan & Peta
+                : path.startsWith(it.href);
           return (
             <Link key={it.href} href={it.href} className={active ? "active" : ""} aria-current={active ? "page" : undefined}>
               <span className="msym">{it.icon}</span>

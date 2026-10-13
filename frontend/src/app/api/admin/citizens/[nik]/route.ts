@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/session";
 import { db } from "@/lib/supabase";
+import { deleteProfile, saveProfile, type CitizenProfile } from "@/lib/citizenProfile";
 
 type Ctx = { params: Promise<{ nik: string }> };
 
@@ -10,6 +11,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const { nik } = await params;
   if (!/^\d{16}$/.test(nik)) return NextResponse.json({ error: "NIK tidak valid." }, { status: 400 });
   const b = await req.json().catch(() => null);
+
+  // --- Base columns that really exist on `citizens` ---
   const patch: { full_name?: string; active?: boolean } = {};
   if (typeof b?.full_name === "string") {
     const n = b.full_name.trim().replace(/\s+/g, " ");
@@ -17,9 +20,58 @@ export async function PATCH(req: Request, { params }: Ctx) {
     patch.full_name = n;
   }
   if (typeof b?.active === "boolean") patch.active = b.active;
-  if (!Object.keys(patch).length) return NextResponse.json({ error: "Tidak ada perubahan." }, { status: 400 });
-  const { error } = await db().from("citizens").update(patch).eq("nik", nik);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // --- Profile fields: validated, then stored in the settings-backed store ---
+  const profile: CitizenProfile = {};
+  let hasProfile = false;
+  if ("email" in (b ?? {})) {
+    const v = (b.email ?? "").toString().trim();
+    if (v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return NextResponse.json({ error: "Format email tidak valid." }, { status: 400 });
+    if (v.length > 120) return NextResponse.json({ error: "Email terlalu panjang." }, { status: 400 });
+    profile.email = v || null;
+    hasProfile = true;
+  }
+  if ("phone" in (b ?? {})) {
+    const v = (b.phone ?? "").toString().trim();
+    if (v && !/^\+?[0-9][0-9\s-]{6,19}$/.test(v)) return NextResponse.json({ error: "Nomor HP tidak valid." }, { status: 400 });
+    profile.phone = v || null;
+    hasProfile = true;
+  }
+  if ("birth_date" in (b ?? {})) {
+    const v = (b.birth_date ?? "").toString().trim();
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return NextResponse.json({ error: "Tanggal lahir tidak valid." }, { status: 400 });
+    profile.birth_date = v || null;
+    hasProfile = true;
+  }
+  if ("address" in (b ?? {})) {
+    profile.address = (b.address ?? "").toString().trim().slice(0, 400) || null;
+    hasProfile = true;
+  }
+  if ("photo" in (b ?? {})) {
+    const v = b.photo;
+    if (v === null || v === "") {
+      profile.photo = null;
+    } else if (typeof v === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(v)) {
+      if (v.length > 360000) return NextResponse.json({ error: "Foto terlalu besar. Coba foto lain." }, { status: 400 });
+      profile.photo = v;
+    } else {
+      return NextResponse.json({ error: "Foto tidak valid." }, { status: 400 });
+    }
+    hasProfile = true;
+  }
+
+  if (!Object.keys(patch).length && !hasProfile) {
+    return NextResponse.json({ error: "Tidak ada perubahan." }, { status: 400 });
+  }
+
+  if (Object.keys(patch).length) {
+    const { error } = await db().from("citizens").update(patch).eq("nik", nik);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (hasProfile) {
+    const err = await saveProfile(nik, profile);
+    if (err) return NextResponse.json({ error: err }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }
 
@@ -30,5 +82,6 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   if (!/^\d{16}$/.test(nik)) return NextResponse.json({ error: "NIK tidak valid." }, { status: 400 });
   const { error } = await db().from("citizens").delete().eq("nik", nik);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  await deleteProfile(nik); // best-effort cleanup of the profile row
   return NextResponse.json({ ok: true });
 }

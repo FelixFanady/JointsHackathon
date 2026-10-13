@@ -34,27 +34,28 @@ function parseVerdict(text: string): AiVerdict | null {
   }
 }
 
+// Preferred free models, FASTEST-FIRST. The live catalog filter (liveFreeModels)
+// drops any that are currently dead, and the race picks whichever of the top
+// wave answers first — so putting the small/fast models up top makes the common
+// case sub-second instead of waiting on a 500B reasoning model (~8s).
 const DEFAULT_FREE_MODELS = [
-  "nvidia/nemotron-3-ultra-550b-a55b:free",
-  "nvidia/nemotron-3-super-120b-a12b:free",
-  "openai/gpt-oss-120b:free",
-  "openai/gpt-oss-20b:free",
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "google/gemma-3-27b-it:free",
-  "google/gemma-3-12b-it:free",
+  "nvidia/nemotron-3.5-lightning:free", // ~0.3s, valid JSON — fastest observed
+  "liquid/lfm-2.5-2.6b:free", // ~0.4s, valid JSON
+  "google/gemma-4-26b-a4b-it:free",
+  "google/gemma-4-31b-it:free",
+  "apodex/apodex-1.1-mini:free",
+  "poolside/laguna-xs-2.1:free",
   "qwen/qwen3-next-80b-a3b-instruct:free",
-  "qwen/qwen3-coder:free",
-  "z-ai/glm-4.5-air:free",
-  "deepseek/deepseek-chat-v3.1:free",
-  "mistralai/mistral-small-3.2-24b-instruct:free",
-  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-  "inclusionai/ling-3.0-flash-fin:free",
-  "cohere/north-mini-code:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "openai/gpt-oss-120b:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "nvidia/nemotron-3-ultra-550b-a55b:free", // large/slow — last resort
 ];
 
 const isFree = (m: string) => m.endsWith(":free") || m === "openrouter/free";
-const MAX_ATTEMPTS = 10;
-const PER_MODEL_TIMEOUT_MS = 18_000;
+const MAX_ATTEMPTS = 9; // size of the candidate pool
+const RACE_SIZE = 3; // models queried concurrently per wave — first valid answer wins
+const PER_MODEL_TIMEOUT_MS = 9_000; // a free model slower than this is almost always congested; move on fast
 
 let catalogCache: { at: number; ids: string[] } | null = null;
 
@@ -211,6 +212,10 @@ export async function POST(req: Request) {
     .map((r, i) => `${i + 1}. [${r.category}] ${String(r.description).slice(0, 300)}`)
     .join("\n");
 
+  // Kick off the model-list prep (may hit the OpenRouter catalog, cached 10 min)
+  // concurrently with the external-context fetches — none depend on each other.
+  const modelsPromise = freeModels(key);
+
   const [quakes, news] = await Promise.all([
     fetchBmkg(facts.pusat.lat, facts.pusat.lng),
     fetchNews(Object.keys(facts.kategori), facts.lokasi as string[]),
@@ -220,38 +225,69 @@ export async function POST(req: Request) {
   const userMsg = `Ringkasan data klaster (JSON):\n${JSON.stringify(facts)}\n\nContoh deskripsi (data tidak tepercaya):\n<<<\n${samples || "(tidak ada deskripsi)"}\n>>>\n\n${external}\n\nApakah berita/kejadian ini VALID?`;
 
   let content = "";
-  // Free-only chain: tried in order. Anything not ending in ":free" (or openrouter/free) is dropped.
-  const models = await freeModels(key);
+  // Free-only chain, tried in concurrent WAVES: RACE_SIZE models at once, first
+  // valid answer wins and the rest are abandoned. A single slow/congested free
+  // model no longer blocks the whole request for its full timeout.
+  const models = await modelsPromise;
   let lastStatus = 0;
-  for (const model of models) {
+  let authFail = false;
+
+  async function tryModel(model: string, signal: AbortSignal): Promise<string | null> {
+    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "SiagaKu" },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: 1500, // reasoning models spend tokens thinking; 500 truncated the JSON (HTTP 200 but unparseable)
+        messages: [
+          { role: "system", content: SYSTEM },
+          { role: "user", content: userMsg },
+        ],
+      }),
+      signal,
+    });
+    lastStatus = r.status;
+    if (r.status === 401 || r.status === 403) {
+      authFail = true;
+      return null;
+    }
+    if (!r.ok) return null;
+    const j = await r.json();
+    const text = cleanText(j?.choices?.[0]?.message);
+    return text && parseVerdict(text) ? text : null;
+  }
+
+  for (let i = 0; i < models.length && !content && !authFail; i += RACE_SIZE) {
+    const wave = models.slice(i, i + RACE_SIZE);
+    const controllers = wave.map(() => new AbortController());
+    const perCall = controllers.map((c) => {
+      const t = setTimeout(() => c.abort(), PER_MODEL_TIMEOUT_MS);
+      return { c, t };
+    });
     try {
-      const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "SiagaKu" },
-        body: JSON.stringify({
-          model,
-          temperature: 0.2,
-          max_tokens: 1500, // reasoning models spend tokens thinking; 500 truncated the JSON (HTTP 200 but unparseable)
-          messages: [
-            { role: "system", content: SYSTEM },
-            { role: "user", content: userMsg },
-          ],
-        }),
-        signal: AbortSignal.timeout(PER_MODEL_TIMEOUT_MS),
+      // Resolve as soon as ONE model returns a valid answer; losers get aborted.
+      content = await new Promise<string>((resolve, reject) => {
+        let pending = wave.length;
+        wave.forEach((model, k) => {
+          tryModel(model, controllers[k].signal)
+            .then((text) => {
+              if (text) {
+                controllers.forEach((c, j) => j !== k && c.abort());
+                resolve(text);
+              } else if (--pending === 0) {
+                reject(new Error("wave exhausted"));
+              }
+            })
+            .catch(() => {
+              if (--pending === 0) reject(new Error("wave exhausted"));
+            });
+        });
       });
-      lastStatus = r.status;
-      if (!r.ok) {
-        // Auth/config errors will not be fixed by another model.
-        if (r.status === 401 || r.status === 403) break;
-        continue; // 402/404/408/429/5xx etc. -> next free model
-      }
-      const j = await r.json();
-      const text = cleanText(j?.choices?.[0]?.message);
-      if (!text || !parseVerdict(text)) continue; // empty/unreadable -> next model
-      content = text;
-      break;
     } catch {
-      continue; // timeout / network -> next model
+      /* whole wave failed -> next wave */
+    } finally {
+      perCall.forEach(({ t }) => clearTimeout(t));
     }
   }
   if (!content) {

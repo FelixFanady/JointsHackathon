@@ -1,0 +1,26 @@
+import type { NavItem } from "@/components/Sidebar";
+import type { Role } from "@/lib/types";
+
+/** The admin sidebar. Shared so it stays identical whether the admin is on an
+ *  /admin page or inside the support console (/support/*). */
+export const ADMIN_NAV: NavItem[] = [
+  { href: "/admin", label: "Ringkasan", icon: "grid_view" },
+  { href: "/admin/citizens", label: "Pengguna (NIK)", icon: "badge" },
+  { href: "/admin/support", label: "Akun Support", icon: "support_agent" },
+  { href: "/admin/performance", label: "Performa Support", icon: "monitoring" },
+  { href: "/admin/settings", label: "Pengaturan", icon: "tune" },
+  { href: "/support/reports", label: "Konsol Support", icon: "inbox" },
+];
+
+/** The plain support sidebar, for non-admin support staff only. */
+export const SUPPORT_NAV: NavItem[] = [
+  { href: "/support/reports", label: "Laporan", icon: "inbox" },
+  { href: "/support/map", label: "Peta Pemantauan", icon: "map" },
+];
+
+/** Sidebar config (title + items) for the given role on a support page. */
+export function sidebarForSupport(role: Role): { title: string; items: NavItem[] } {
+  return role === "admin"
+    ? { title: "Admin Panel", items: ADMIN_NAV }
+    : { title: "Pusat Operasi", items: SUPPORT_NAV };
+}
