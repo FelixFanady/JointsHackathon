@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../api.dart';
+import '../sos_sound.dart';
 import '../theme.dart';
 
 const holdDuration = Duration(seconds: 3);
@@ -54,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<void> _triggered() async {
     HapticFeedback.heavyImpact();
+    SosSound.play('alarm');
     hold.reset();
     await showModalBottomSheet(
       context: context,
@@ -74,12 +77,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
           Text('Halo, $first', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w700, letterSpacing: -.6)),
-          const SizedBox(height: 28),
+          const SizedBox(height: 12),
           Center(child: _SosButton(hold: hold)),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           const Center(child: Text('DARURAT', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 2.5))),
           const SizedBox(height: 4),
-          const Center(child: Text('Tahan 3 detik untuk mengirim', style: TextStyle(color: C.muted, fontSize: 16))),
+          Center(
+            child: AnimatedBuilder(
+              animation: hold,
+              builder: (_, __) => AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: Text(
+                  hold.value > 0 ? 'Terus tahan… lepas untuk batal' : 'Tahan 3 detik untuk mengirim',
+                  key: ValueKey(hold.value > 0),
+                  style: TextStyle(
+                    color: hold.value > 0 ? C.emergencyDark : C.muted,
+                    fontSize: 16,
+                    fontWeight: hold.value > 0 ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 32),
           AppCard(
             onTap: widget.onOpenMap,
@@ -119,10 +138,72 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 }
 
-/// Hold-to-activate SOS (3 s) with a progress ring, per DESIGN.md.
-class _SosButton extends StatelessWidget {
+/// Hold-to-activate SOS (3 s), per DESIGN.md.
+/// Idle: soft ripples + breathing. Pressed: button sinks, glow grows, ring fills,
+/// countdown number pops each second with a rising beep; release early = cancel.
+class _SosButton extends StatefulWidget {
   const _SosButton({required this.hold});
   final AnimationController hold;
+  @override
+  State<_SosButton> createState() => _SosButtonState();
+}
+
+class _SosButtonState extends State<_SosButton> with SingleTickerProviderStateMixin {
+  late final AnimationController idle = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400));
+  bool down = false;
+  int lastSecond = -1;
+
+  AnimationController get hold => widget.hold;
+
+  @override
+  void initState() {
+    super.initState();
+    hold.addListener(_onTick);
+    SosSound.preload();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Respect the system "remove animations" setting.
+    if (MediaQuery.of(context).disableAnimations) {
+      idle.stop();
+    } else if (!idle.isAnimating) {
+      idle.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    hold.removeListener(_onTick);
+    idle.dispose();
+    super.dispose();
+  }
+
+  // One beep + vibration per second while holding: 3 (low) -> 2 -> 1 (high).
+  void _onTick() {
+    if (!down || hold.value >= 1) return;
+    final s = (hold.value * holdDuration.inSeconds).floor();
+    if (s != lastSecond) {
+      lastSecond = s;
+      SosSound.play('beep${s + 1}');
+      HapticFeedback.mediumImpact();
+    }
+  }
+
+  void _press() {
+    setState(() => down = true);
+    lastSecond = -1;
+    hold.forward(from: 0);
+  }
+
+  void _release() {
+    if (!down) return;
+    final cancelled = hold.value > 0 && hold.value < 1;
+    setState(() => down = false);
+    hold.reset();
+    if (cancelled) SosSound.play('press');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -130,40 +211,95 @@ class _SosButton extends StatelessWidget {
       button: true,
       label: 'Tombol SOS darurat. Tahan 3 detik untuk mengirim.',
       child: Listener(
-        onPointerDown: (_) {
-          HapticFeedback.mediumImpact();
-          hold.forward(from: 0);
-        },
-        onPointerUp: (_) => hold.reset(),
-        onPointerCancel: (_) => hold.reset(),
+        onPointerDown: (_) => _press(),
+        onPointerUp: (_) => _release(),
+        onPointerCancel: (_) => _release(),
         child: AnimatedBuilder(
-          animation: hold,
+          animation: Listenable.merge([hold, idle]),
           builder: (_, __) {
             final v = hold.value;
+            final t = idle.value;
+            final pressed = down && v > 0;
+            final breath = 1 + .025 * math.sin(t * 2 * math.pi);
+            // Number pops at the start of each second.
+            final frac = (v * holdDuration.inSeconds) % 1;
+            final pop = 1 + .35 * (1 - Curves.easeOut.transform(math.min(frac * 4, 1)));
+            // Tiny tremble that grows as the hold completes.
+            final shake = pressed ? math.sin(t * 2 * math.pi * 40) * 1.6 * v : 0.0;
+            final remaining = (holdDuration.inSeconds - v * holdDuration.inSeconds).ceil().clamp(1, holdDuration.inSeconds);
+
             return SizedBox(
-              width: 260, height: 260,
+              width: 300, height: 300,
               child: Stack(alignment: Alignment.center, children: [
-                Container(
-                  width: 260, height: 260,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: C.emergency.withValues(alpha: .08 + .1 * v)),
-                ),
-                SizedBox(
-                  width: 236, height: 236,
-                  child: CircularProgressIndicator(value: v, strokeWidth: 8, color: C.emergencyDark, backgroundColor: Colors.transparent),
-                ),
-                Container(
-                  width: 210, height: 210,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [C.emergencyDark, C.emergency]),
-                    boxShadow: shadowLg,
+                // Idle: three ripples spreading outward.
+                if (!pressed)
+                  for (var k = 0; k < 3; k++)
+                    _ring(
+                      size: 210 + 90 * ((t + k / 3) % 1),
+                      color: C.emergency.withValues(alpha: .22 * (1 - (t + k / 3) % 1)),
+                    ),
+                // Pressed: a strong glow that grows with the hold.
+                if (pressed)
+                  _ring(
+                    size: 240 + 50 * v + 6 * math.sin(t * 2 * math.pi * 6),
+                    color: C.emergency.withValues(alpha: .14 + .22 * v),
                   ),
-                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    const Icon(Icons.warning_amber_rounded, size: 56, color: Colors.white),
-                    const SizedBox(height: 4),
-                    Text(v > 0 ? '${(holdDuration.inSeconds - v * holdDuration.inSeconds).ceil().clamp(1, 3)}' : 'SOS',
-                        style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w800, color: Colors.white)),
-                  ]),
+                // Progress ring.
+                SizedBox(
+                  width: 246, height: 246,
+                  child: CircularProgressIndicator(
+                    value: v,
+                    strokeWidth: 10,
+                    strokeCap: StrokeCap.round,
+                    color: C.emergencyDark,
+                    backgroundColor: pressed ? C.emergency.withValues(alpha: .15) : Colors.transparent,
+                  ),
+                ),
+                // The button itself: sinks when pressed, springs back on release.
+                Transform.translate(
+                  offset: Offset(shake, 0),
+                  child: AnimatedScale(
+                    scale: down ? .92 : 1,
+                    duration: Duration(milliseconds: down ? 140 : 520),
+                    curve: down ? Curves.easeOut : Curves.elasticOut,
+                    child: Transform.scale(
+                      scale: pressed ? 1 : breath,
+                      child: Container(
+                        width: 214, height: 214,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            center: const Alignment(-.35, -.45),
+                            radius: 1.1,
+                            colors: pressed
+                                ? [Color.lerp(C.emergency, C.emergencyDark, v)!, C.emergencyDark]
+                                : const [C.emergencyGlow, C.emergency, C.emergencyDark],
+                          ),
+                          border: Border.all(color: Colors.white.withValues(alpha: .35), width: 4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: C.emergency.withValues(alpha: pressed ? .35 + .3 * v : .4),
+                              blurRadius: pressed ? 24 + 30 * v : 32,
+                              spreadRadius: pressed ? 2 + 6 * v : 0,
+                              offset: Offset(0, pressed ? 4 : 12),
+                            ),
+                          ],
+                        ),
+                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(pressed ? Icons.emergency_share : Icons.warning_amber_rounded, size: 52, color: Colors.white),
+                          const SizedBox(height: 2),
+                          Transform.scale(
+                            scale: pressed ? pop : 1,
+                            child: Text(
+                              pressed ? '$remaining' : 'SOS',
+                              style: const TextStyle(fontSize: 46, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 1.5,
+                                  shadows: [Shadow(color: Color(0x55000000), blurRadius: 8, offset: Offset(0, 2))]),
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ),
+                  ),
                 ),
               ]),
             );
@@ -172,6 +308,10 @@ class _SosButton extends StatelessWidget {
       ),
     );
   }
+
+  Widget _ring({required double size, required Color color}) => IgnorePointer(
+        child: Container(width: size, height: size, decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
+      );
 }
 
 /// Emergency flow: Foto (opsional) -> Jenis bencana -> Konfirmasi -> Terkirim.
@@ -190,6 +330,19 @@ class _SosFlowState extends State<SosFlow> {
   String? locError;
   bool sending = false;
   String? error;
+  final otherCtrl = TextEditingController();
+
+  static const otherCategory = 'Bencana Lainnya';
+  bool get isOther => category == otherCategory;
+  String get otherText => otherCtrl.text.trim();
+  bool get typeReady => category != null && (!isOther || otherText.length >= 3);
+  String get categoryLabel => isOther && otherText.isNotEmpty ? otherText : (category ?? '-');
+
+  @override
+  void dispose() {
+    otherCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -220,7 +373,10 @@ class _SosFlowState extends State<SosFlow> {
     }
     setState(() { sending = true; error = null; });
     try {
-      await Api.sendSos(nik: session.nik!, lat: place!.lat, lng: place!.lng, category: category ?? 'Darurat', photoB64: photoB64);
+      await Api.sendSos(
+        nik: session.nik!, lat: place!.lat, lng: place!.lng, category: category ?? 'Darurat', photoB64: photoB64,
+        description: isOther && otherText.isNotEmpty ? otherText : null,
+      );
       HapticFeedback.heavyImpact();
       if (mounted) setState(() => step = 3);
     } on ApiException catch (e) {
@@ -312,16 +468,134 @@ class _SosFlowState extends State<SosFlow> {
               GridView.count(
                 crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
                 mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.25,
-                children: [for (final c in e.value) _CategoryTile(icon: c.$1, label: c.$2, desc: c.$3, selected: category == c.$2, onTap: () => setState(() => category = c.$2))],
+                children: [
+                  for (final c in e.value)
+                    _CategoryTile(
+                      icon: c.$1, label: c.$2, desc: c.$3, selected: category == c.$2,
+                      onTap: () {
+                        setState(() => category = c.$2);
+                        if (c.$2 != otherCategory) FocusScope.of(context).unfocus();
+                      },
+                    ),
+                ],
               ),
+              // "Bencana Lainnya": let the citizen type what is happening.
+              if (e.value.any((c) => c.$2 == otherCategory))
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
+                  child: isOther ? _otherField() : const SizedBox(width: double.infinity),
+                ),
             ],
           ]),
         ),
         _foot(
-          primary: PrimaryButton(label: 'Lanjutkan ke Konfirmasi', icon: Icons.arrow_forward, onPressed: category == null ? null : () => setState(() => step = 2)),
+          primary: PrimaryButton(label: 'Lanjutkan ke Konfirmasi', icon: Icons.arrow_forward, onPressed: typeReady ? () { FocusScope.of(context).unfocus(); setState(() => step = 2); } : null),
           secondary: SecondaryButton(label: 'Kembali', onPressed: () => setState(() => step = 0)),
         ),
       ]);
+
+  static const _otherSuggestions = ['Angin puting beliung', 'Gunung meletus', 'Pohon tumbang', 'Kekeringan', 'Gelombang tinggi'];
+
+  Widget _otherField() {
+    final n = otherText.length;
+    final tooShort = n > 0 && n < 3;
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: C.primaryFixed, width: 1.5),
+        boxShadow: shadowMd,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(color: C.primaryTint, borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.edit_note_rounded, color: C.primary),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Bencana apa yang terjadi?', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              SizedBox(height: 2),
+              Text('Tulis singkat agar petugas tahu bantuan yang dibutuhkan.', style: TextStyle(color: C.muted, fontSize: 12.5)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 14),
+        TextField(
+          controller: otherCtrl,
+          autofocus: true,
+          maxLength: 60,
+          textCapitalization: TextCapitalization.sentences,
+          textInputAction: TextInputAction.done,
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) { if (typeReady) setState(() => step = 2); },
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+          buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+          decoration: InputDecoration(
+            hintText: 'Contoh: angin puting beliung',
+            hintStyle: const TextStyle(color: C.muted, fontWeight: FontWeight.w400),
+            filled: true,
+            fillColor: C.field,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            prefixIcon: const Icon(Icons.crisis_alert, color: C.primary, size: 20),
+            suffixIcon: n == 0
+                ? null
+                : IconButton(
+                    tooltip: 'Hapus',
+                    icon: const Icon(Icons.cancel, size: 20, color: C.muted),
+                    onPressed: () => setState(otherCtrl.clear),
+                  ),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: tooShort ? C.emergency : C.primary, width: 2),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: tooShort
+                  ? const Text('Tulis minimal 3 huruf.', key: ValueKey('short'), style: TextStyle(color: C.emergency, fontSize: 12, fontWeight: FontWeight.w500))
+                  : n >= 3
+                      ? const Row(key: ValueKey('ok'), children: [
+                          Icon(Icons.check_circle, size: 14, color: C.ok),
+                          SizedBox(width: 4),
+                          Text('Siap dikirim', style: TextStyle(color: C.ok, fontSize: 12, fontWeight: FontWeight.w600)),
+                        ])
+                      : const SizedBox.shrink(key: ValueKey('none')),
+            ),
+          ),
+          Text('$n/60', style: const TextStyle(color: C.muted, fontSize: 12)),
+        ]),
+        const SizedBox(height: 10),
+        const Text('Atau pilih cepat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: .4, color: C.muted)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final s in _otherSuggestions)
+            _SuggestChip(
+              label: s,
+              selected: otherText.toLowerCase() == s.toLowerCase(),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() {
+                  otherCtrl.text = s;
+                  otherCtrl.selection = TextSelection.collapsed(offset: s.length);
+                });
+              },
+            ),
+        ]),
+      ]),
+    );
+  }
 
   Widget _locationBanner() => Container(
         padding: const EdgeInsets.all(12),
@@ -348,7 +622,7 @@ class _SosFlowState extends State<SosFlow> {
               child: Column(children: [
                 _row(Icons.person_outline, 'Pelapor', session.name ?? ''),
                 const Divider(height: 24),
-                _row(iconForCategory(category ?? ''), 'Jenis kejadian', category ?? '-'),
+                _row(iconForCategory(category ?? ''), 'Jenis kejadian', categoryLabel),
                 const Divider(height: 24),
                 _row(Icons.my_location, 'Lokasi', place != null ? '${place!.lat.toStringAsFixed(5)}, ${place!.lng.toStringAsFixed(5)}' : (locError ?? 'Mencari…')),
                 const Divider(height: 24),
@@ -387,6 +661,30 @@ class _SosFlowState extends State<SosFlow> {
         ),
         _foot(primary: PrimaryButton(label: 'Selesai', onPressed: () => Navigator.pop(context))),
       ]);
+}
+
+class _SuggestChip extends StatelessWidget {
+  const _SuggestChip({required this.label, required this.selected, required this.onTap});
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Material(
+        color: selected ? C.primary : C.primaryTint,
+        borderRadius: BorderRadius.circular(99),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(99),
+          onTap: onTap,
+          child: AnimatedPadding(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (selected) ...[const Icon(Icons.check, size: 14, color: Colors.white), const SizedBox(width: 4)],
+              Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? Colors.white : C.primaryDark)),
+            ]),
+          ),
+        ),
+      );
 }
 
 class _CategoryTile extends StatelessWidget {

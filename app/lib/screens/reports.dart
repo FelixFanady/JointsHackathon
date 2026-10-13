@@ -2,10 +2,13 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import 'report_detail_sheet.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -134,6 +137,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: AppCard(
+            onTap: () => showNearbyDetail(context, r),
             child: Row(children: [
               CircleAvatar(radius: 24, backgroundColor: C.primaryTint, child: Icon(iconForCategory(r.category), color: C.primary)),
               const SizedBox(width: 12),
@@ -161,29 +165,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ]),
       );
 
-  void _detail(MyReport r) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            StatusChip(r.status),
-            const SizedBox(height: 12),
-            Text(r.kind == 'sos' ? 'SOS • ${r.category}' : r.category, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text(timeAgo(r.createdAt), style: const TextStyle(color: C.muted)),
-            if (r.description != null && r.description!.isNotEmpty) ...[const SizedBox(height: 16), Text(r.description!, style: const TextStyle(fontSize: 16))],
-            if (r.address != null) ...[const SizedBox(height: 12), Text(r.address!, style: const TextStyle(color: C.muted))],
-            const SizedBox(height: 16),
-          ]),
-        ),
-      ),
-    );
-  }
+  void _detail(MyReport r) => showReportDetail(context, r);
 }
 
 /// Buat Laporan: 1 Jenis -> 2 Penjelasan -> 3 Foto -> 4 Konfirmasi.
@@ -251,11 +233,31 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       if (!mounted) return;
       await showDialog<void>(
         context: context,
-        builder: (_) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Laporan Diterima'),
-          content: const Text('Terima kasih. Laporan Anda akan diverifikasi oleh petugas.'),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Tutup'))],
+        builder: (ctx) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.elasticOut,
+                builder: (_, v, c) => Transform.scale(scale: v, child: c),
+                child: Container(
+                  width: 84, height: 84,
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: C.okBg, border: Border.all(color: C.ok.withValues(alpha: .25), width: 6)),
+                  child: const Icon(Icons.check_rounded, size: 48, color: C.ok),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text('Laporan Terkirim', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              const Text('Terima kasih sudah peduli. Petugas akan memverifikasi laporan Anda. Pantau statusnya di tab Laporan Saya.',
+                  textAlign: TextAlign.center, style: TextStyle(color: C.muted, height: 1.45)),
+              const SizedBox(height: 20),
+              PrimaryButton(label: 'Selesai', onPressed: () => Navigator.pop(ctx)),
+            ]),
+          ),
         ),
       );
       if (mounted) Navigator.pop(context, true);
@@ -294,8 +296,11 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               if (step < 3)
                 PrimaryButton(label: step == 2 && photoBytes == null ? 'Lewati' : 'Lanjut', onPressed: canNext ? () => setState(() { step++; error = null; }) : null)
-              else
-                PrimaryButton(label: 'Kirim Laporan', loading: sending, onPressed: _send),
+              else ...[
+                PrimaryButton(label: 'Kirim Laporan', icon: Icons.send_rounded, loading: sending, onPressed: _send),
+                const SizedBox(height: 6),
+                const Text('Laporan langsung diteruskan ke petugas untuk diverifikasi.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: C.muted)),
+              ],
               if (step > 0) SecondaryButton(label: 'Kembali', onPressed: sending ? null : () => setState(() => step--)),
             ]),
           ),
@@ -394,29 +399,389 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: C.emergency))),
       ]);
 
-  Widget _confirmStep() => ListView(padding: const EdgeInsets.all(16), children: [
-        _title('Konfirmasi Laporan', 'Periksa kembali sebelum dikirim.'),
-        AppCard(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _kv('Pelapor', session.name ?? ''),
-            _kv('Jenis', category ?? '-'),
-            _kv('Membahayakan warga', danger == true ? 'Ya' : 'Tidak'),
-            _kv('Lokasi', place != null ? '${place!.lat.toStringAsFixed(5)}, ${place!.lng.toStringAsFixed(5)}' : (locError ?? 'Mencari lokasi…')),
-            _kv('Foto', photoBytes != null ? 'Terlampir' : 'Tidak ada'),
-            const Divider(height: 24),
-            Text(desc.text.trim()),
+  Widget _confirmStep() {
+    final cat = category ?? '-';
+    final isDanger = danger == true;
+    var i = 0; // stagger index for the entrance animation
+    Widget reveal(Widget w) => _Reveal(index: i++, child: w);
+    return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 16), children: [
+      // Hero: summary banner with completeness checklist
+      reveal(_heroSummary(cat, isDanger)),
+      const SizedBox(height: 14),
+      reveal(Row(children: [
+        const Text('Periksa detail laporan', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        const Spacer(),
+        Text('Ketuk Ubah untuk memperbaiki', style: TextStyle(fontSize: 12, color: C.muted.withValues(alpha: .9))),
+      ])),
+      const SizedBox(height: 10),
+
+      // Description
+      reveal(_ConfirmSection(
+        title: 'Penjelasan',
+        icon: Icons.notes_rounded,
+        onEdit: () => setState(() => step = 1),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            color: C.field,
+            borderRadius: BorderRadius.circular(14),
+            border: const Border(left: BorderSide(color: C.primary, width: 3)),
+          ),
+          child: Text('"${desc.text.trim()}"', style: const TextStyle(fontSize: 15, height: 1.45, fontStyle: FontStyle.italic)),
+        ),
+      )),
+
+      // Location with a small map preview
+      reveal(_ConfirmSection(
+        title: 'Lokasi Kejadian',
+        icon: Icons.location_on_outlined,
+        trailing: place != null
+            ? const _MiniBadge(icon: Icons.gps_fixed, label: 'GPS terkunci', bg: C.okBg, fg: C.ok)
+            : const _MiniBadge(icon: Icons.location_searching, label: 'Mencari…', bg: C.warnBg, fg: C.warnText),
+        child: place != null
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: SizedBox(
+                  height: 150,
+                  child: Stack(children: [
+                    FlutterMap(
+                      options: MapOptions(initialCenter: LatLng(place!.lat, place!.lng), initialZoom: 16, interactionOptions: const InteractionOptions(flags: InteractiveFlag.none)),
+                      children: [
+                        TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'id.siagaku.app'),
+                        MarkerLayer(markers: [
+                          Marker(point: LatLng(place!.lat, place!.lng), width: 90, height: 90, child: const _PulsePin()),
+                        ]),
+                      ],
+                    ),
+                    Positioned(
+                      left: 10, bottom: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: .95), borderRadius: BorderRadius.circular(99), boxShadow: shadowSm),
+                        child: Text('${place!.lat.toStringAsFixed(5)}, ${place!.lng.toStringAsFixed(5)}',
+                            style: const TextStyle(fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.w600, color: C.text)),
+                      ),
+                    ),
+                  ]),
+                ),
+              )
+            : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(locError ?? 'Mencari lokasi Anda…', style: const TextStyle(color: C.warnText)),
+                if (locError != null)
+                  TextButton.icon(onPressed: _locate, icon: const Icon(Icons.refresh, size: 18), label: const Text('Coba lokasi lagi')),
+              ]),
+      )),
+
+      // Photo
+      reveal(_ConfirmSection(
+        title: 'Foto Bukti',
+        icon: Icons.photo_camera_outlined,
+        onEdit: () => setState(() => step = 2),
+        editLabel: photoBytes == null ? 'Tambah' : 'Ubah',
+        trailing: photoBytes == null ? const _MiniBadge(icon: Icons.info_outline, label: 'Opsional', bg: C.field, fg: C.muted) : null,
+        child: photoBytes != null
+            ? ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.memory(photoBytes!, height: 170, width: double.infinity, fit: BoxFit.cover))
+            : Material(
+                color: C.primaryTint.withValues(alpha: .6),
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => setState(() => step = 2),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+                    child: Row(children: [
+                      Icon(Icons.add_a_photo_outlined, color: C.primary),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text('Foto mempercepat verifikasi petugas. Ketuk untuk menambahkan.',
+                            style: TextStyle(fontSize: 13, color: C.primaryDark, height: 1.35)),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+      )),
+
+      // Reporter + privacy
+      reveal(_ConfirmSection(
+        title: 'Pelapor',
+        icon: Icons.person_outline,
+        child: Column(children: [
+          Row(children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: C.primaryDark,
+              child: Text(
+                (session.name ?? '?').trim().isEmpty ? '?' : (session.name ?? '?').trim()[0].toUpperCase(),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(session.name ?? '', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                Text('NIK ${maskNik(session.nik ?? '')}', style: const TextStyle(color: C.muted, fontSize: 13)),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: C.primaryTint, borderRadius: BorderRadius.circular(12)),
+            child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.lock_outline, size: 16, color: C.primary),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('Nama dan NIK hanya terlihat oleh petugas. Warga lain hanya melihat jenis kejadian dan perkiraan lokasi.',
+                    style: TextStyle(fontSize: 12, height: 1.4, color: C.text)),
+              ),
+            ]),
+          ),
+        ]),
+      )),
+      if (error != null)
+        Container(
+          margin: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(16)),
+          child: Row(children: [
+            const Icon(Icons.error_outline, color: C.emergencyDark, size: 20),
+            const SizedBox(width: 10),
+            Expanded(child: Text(error!, style: const TextStyle(color: C.emergencyDark, fontWeight: FontWeight.w500))),
           ]),
         ),
-        if (place == null && locError != null) TextButton.icon(onPressed: _locate, icon: const Icon(Icons.refresh), label: const Text('Coba lokasi lagi')),
-        if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: C.emergency, fontWeight: FontWeight.w500))),
-      ]);
+    ]);
+  }
 
-  Widget _kv(String k, String v) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(k, style: const TextStyle(color: C.muted)),
-          const Spacer(),
-          Flexible(child: Text(v, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w600))),
+  /// Blue gradient banner: what is being reported + a 4-item readiness checklist.
+  Widget _heroSummary(String cat, bool isDanger) {
+    final checks = <(String, bool, bool)>[
+      // (label, done, optional)
+      ('Jenis', category != null, false),
+      ('Penjelasan', desc.text.trim().length >= 10, false),
+      ('Lokasi', place != null, false),
+      ('Foto', photoBytes != null, true),
+    ];
+    final ready = checks.where((c) => !c.$3).every((c) => c.$2);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [C.primary, C.primaryDark]),
+        boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .3), blurRadius: 24, offset: const Offset(0, 10))],
+      ),
+      child: Stack(clipBehavior: Clip.none, children: [
+        // Decorative soft circles
+        Positioned(right: -30, top: -40, child: _blob(120, .10)),
+        Positioned(right: 40, bottom: -50, child: _blob(80, .07)),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: .18), borderRadius: BorderRadius.circular(99)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(ready ? Icons.check_circle : Icons.pending_outlined, size: 14, color: Colors.white),
+                const SizedBox(width: 4),
+                Text(ready ? 'Siap dikirim' : 'Belum lengkap', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () => setState(() => step = 0),
+              icon: const Icon(Icons.edit_outlined, size: 16),
+              label: const Text('Ubah'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                backgroundColor: Colors.white.withValues(alpha: .14),
+                visualDensity: VisualDensity.compact,
+                shape: const StadiumBorder(),
+                textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 14),
+          Row(children: [
+            Container(
+              width: 60, height: 60,
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), boxShadow: shadowMd),
+              child: Icon(iconForCategory(cat), color: C.primary, size: 32),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Laporan Warga', style: TextStyle(color: Colors.white.withValues(alpha: .8), fontSize: 13, fontWeight: FontWeight.w500)),
+                Text(cat, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -.4)),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(color: isDanger ? const Color(0xFFFFE4E4) : Colors.white.withValues(alpha: .18), borderRadius: BorderRadius.circular(99)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(isDanger ? Icons.warning_amber_rounded : Icons.shield_outlined, size: 14, color: isDanger ? C.emergencyDark : Colors.white),
+              const SizedBox(width: 4),
+              Text(isDanger ? 'Membahayakan warga' : 'Tidak membahayakan warga',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: isDanger ? C.emergencyDark : Colors.white)),
+            ]),
+          ),
+          const SizedBox(height: 16),
+          Container(height: 1, color: Colors.white.withValues(alpha: .18)),
+          const SizedBox(height: 12),
+          Row(children: [
+            for (final c in checks)
+              Expanded(
+                child: Column(children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    width: 26, height: 26,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: c.$2 ? Colors.white : Colors.white.withValues(alpha: .14),
+                      border: Border.all(color: Colors.white.withValues(alpha: .5)),
+                    ),
+                    child: Icon(c.$2 ? Icons.check : (c.$3 ? Icons.remove : Icons.close), size: 15, color: c.$2 ? C.primary : Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(c.$1, style: TextStyle(color: Colors.white.withValues(alpha: c.$2 ? 1 : .7), fontSize: 11.5, fontWeight: FontWeight.w600)),
+                  if (c.$3 && !c.$2) Text('opsional', style: TextStyle(color: Colors.white.withValues(alpha: .6), fontSize: 9.5)),
+                ]),
+              ),
+          ]),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _blob(double size, double alpha) => IgnorePointer(
+        child: Container(width: size, height: size, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: alpha))),
+      );
+}
+
+/// Red map pin with a soft pulsing ring (static when animations are disabled).
+class _PulsePin extends StatefulWidget {
+  const _PulsePin();
+  @override
+  State<_PulsePin> createState() => _PulsePinState();
+}
+
+class _PulsePinState extends State<_PulsePin> with SingleTickerProviderStateMixin {
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.of(context).disableAnimations) {
+      c.stop();
+    } else if (!c.isAnimating) {
+      c.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: c,
+        builder: (_, __) => Stack(alignment: Alignment.center, children: [
+          Container(
+            width: 24 + 60 * c.value, height: 24 + 60 * c.value,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: C.emergency.withValues(alpha: .28 * (1 - c.value))),
+          ),
+          Container(
+            width: 22, height: 22,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: C.emergency, border: Border.all(color: Colors.white, width: 3), boxShadow: shadowMd),
+          ),
+        ]),
+      );
+}
+
+/// Staggered fade + slide-up when the confirmation step opens.
+class _Reveal extends StatelessWidget {
+  const _Reveal({required this.index, required this.child});
+  final int index;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.of(context).disableAnimations) return child;
+    final ms = 320 + index * 70;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: ms),
+      curve: Interval((index * 70) / ms, 1, curve: Curves.easeOutCubic),
+      child: child,
+      builder: (_, v, c) => Opacity(opacity: v, child: Transform.translate(offset: Offset(0, 18 * (1 - v)), child: c)),
+    );
+  }
+}
+
+/// White card used on the confirmation step: optional title row with icon and an "Ubah" link.
+class _ConfirmSection extends StatelessWidget {
+  const _ConfirmSection({required this.child, this.title, this.icon, this.onEdit, this.editLabel = 'Ubah', this.trailing});
+  final Widget child;
+  final String? title;
+  final IconData? icon;
+  final VoidCallback? onEdit;
+  final String editLabel;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final edit = onEdit == null
+        ? null
+        : TextButton.icon(
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined, size: 14),
+            label: Text(editLabel),
+            style: TextButton.styleFrom(
+              foregroundColor: C.primary,
+              backgroundColor: C.primaryTint,
+              shape: const StadiumBorder(),
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5),
+            ),
+          );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 10, 16),
+      decoration: BoxDecoration(color: C.card, borderRadius: BorderRadius.circular(20), boxShadow: shadowSm),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (title != null) ...[
+          Row(children: [
+            Icon(icon, size: 18, color: C.primary),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title!, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+            if (trailing != null) Padding(padding: const EdgeInsets.only(right: 6), child: trailing),
+            if (edit != null) edit,
+          ]),
+          const SizedBox(height: 10),
+          Padding(padding: const EdgeInsets.only(right: 6), child: child),
+        ] else
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: child), if (edit != null) edit]),
+      ]),
+    );
+  }
+}
+
+class _MiniBadge extends StatelessWidget {
+  const _MiniBadge({required this.icon, required this.label, required this.bg, required this.fg});
+  final IconData icon;
+  final String label;
+  final Color bg, fg;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(99)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 12, color: fg),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg)),
         ]),
       );
 }

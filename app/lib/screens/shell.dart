@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../api.dart';
 import '../theme.dart';
@@ -41,17 +42,36 @@ class _ShellState extends State<Shell> {
           const SizedBox(width: 8),
         ],
       ),
-      body: IndexedStack(index: index, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: goTo,
-        backgroundColor: Colors.white.withValues(alpha: .95),
-        indicatorColor: Colors.transparent,
-        height: 68,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: C.primary), label: 'Beranda'),
-          NavigationDestination(icon: Icon(Icons.campaign_outlined), selectedIcon: Icon(Icons.campaign, color: C.primary), label: 'Lapor'),
-          NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map, color: C.primary), label: 'Peta'),
+      body: Stack(children: [
+        // All pages stay alive (like IndexedStack) but the switch fades + slides.
+        // TickerMode wraps only the page: wrapping the fade itself froze it, leaving the old page on top.
+        for (var i = 0; i < pages.length; i++)
+          IgnorePointer(
+            ignoring: i != index,
+            child: AnimatedOpacity(
+              opacity: i == index ? 1 : 0,
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOut,
+              child: AnimatedSlide(
+                offset: i == index ? Offset.zero : Offset(i < index ? -.04 : .04, 0),
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                child: TickerMode(enabled: i == index, child: pages[i]),
+              ),
+            ),
+          ),
+      ]),
+      bottomNavigationBar: _AnimatedNavBar(
+        index: index,
+        onTap: (i) {
+          if (i == index) return;
+          HapticFeedback.selectionClick();
+          goTo(i);
+        },
+        items: const [
+          (Icons.home_outlined, Icons.home_rounded, 'Beranda'),
+          (Icons.campaign_outlined, Icons.campaign, 'Lapor'),
+          (Icons.map_outlined, Icons.map, 'Peta'),
         ],
       ),
     );
@@ -78,6 +98,112 @@ class _ShellState extends State<Shell> {
                 Navigator.pop(ctx);
                 session.signOut();
               },
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom navigation with a sliding pill behind the active tab, a bouncy icon,
+/// and a press-down effect on every tab.
+class _AnimatedNavBar extends StatelessWidget {
+  const _AnimatedNavBar({required this.index, required this.onTap, required this.items});
+  final int index;
+  final ValueChanged<int> onTap;
+  final List<(IconData, IconData, String)> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = items.length;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: const Color(0xFF14213D).withValues(alpha: .06), blurRadius: 16, offset: const Offset(0, -4))],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 72,
+          child: LayoutBuilder(builder: (_, box) {
+            final w = box.maxWidth / n;
+            const pillW = 64.0, pillH = 34.0;
+            return Stack(children: [
+              // Sliding pill
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 380),
+                curve: Curves.easeOutBack,
+                left: w * index + (w - pillW) / 2,
+                top: 9,
+                width: pillW,
+                height: pillH,
+                child: Container(decoration: BoxDecoration(color: C.primaryTint, borderRadius: BorderRadius.circular(99))),
+              ),
+              Row(children: [
+                for (var i = 0; i < n; i++)
+                  Expanded(child: _NavItem(item: items[i], selected: i == index, onTap: () => onTap(i))),
+              ]),
+            ]);
+          }),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatefulWidget {
+  const _NavItem({required this.item, required this.selected, required this.onTap});
+  final (IconData, IconData, String) item;
+  final bool selected;
+  final VoidCallback onTap;
+  @override
+  State<_NavItem> createState() => _NavItemState();
+}
+
+class _NavItemState extends State<_NavItem> {
+  bool pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final sel = widget.selected;
+    final color = sel ? C.primary : C.muted;
+    return Semantics(
+      selected: sel,
+      button: true,
+      label: widget.item.$3,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => pressed = true),
+        onTapCancel: () => setState(() => pressed = false),
+        onTapUp: (_) => setState(() => pressed = false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: pressed ? .88 : 1,
+          duration: const Duration(milliseconds: 120),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            SizedBox(
+              height: 34,
+              child: Center(
+                // Icon pops when its tab becomes active.
+                child: TweenAnimationBuilder<double>(
+                  key: ValueKey(sel),
+                  tween: Tween(begin: sel ? .6 : 1, end: 1),
+                  duration: const Duration(milliseconds: 450),
+                  curve: Curves.elasticOut,
+                  builder: (_, s, c) => Transform.scale(scale: s, child: c),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(sel ? widget.item.$2 : widget.item.$1, key: ValueKey(sel), color: color, size: 24),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: TextStyle(fontSize: 12, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: color, fontFamily: DefaultTextStyle.of(context).style.fontFamily),
+              child: Text(widget.item.$3),
             ),
           ]),
         ),
