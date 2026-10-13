@@ -1,0 +1,43 @@
+// SiagaKu design tokens (from stitch_siagaku_emergency_design_system / DESIGN.md)
+$primary: #1d4ed8;
+$primary-dark: #0037b0;
+$primary-fixed: #dce1ff;
+$danger: #e5383b;
+$danger-bg: #fee2e2;
+$warn: #f59e0b;
+$warn-bg: #fef3c7;
+$warn-text: #b45309;
+$ok: #16a34a;
+$ok-bg: #dcfce7;
+$info-bg: #dbeafe;
+$ai: #7c3aed;
+$ai-bg: #f3e8ff;
+$slate: #64748b;
+$slate-bg: #f1f5f9;
+
+$canvas: #f8f9fb;
+$surface: #eef0f4;
+$card: #ffffff;
+$text: #14213d;
+$muted: #5b6478;
+$outline: #c4c5d7;
+
+$r-card: 20px;
+$r-input: 12px;
+$shadow-sm: 0 2px 8px rgba(20, 33, 61, 0.04);
+$shadow-md: 0 6px 16px rgba(20, 33, 61, 0.08);
+$shadow-lg: 0 12px 32px rgba(20, 33, 61, 0.12);
+
+@mixin pill($bg, $fg) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 14px;
+  background: $bg;
+  color: $fg;
+  white-space: nowrap;
+}
