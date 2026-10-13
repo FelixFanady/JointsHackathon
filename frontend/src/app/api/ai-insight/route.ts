@@ -35,17 +35,65 @@ function parseVerdict(text: string): AiVerdict | null {
 
 const DEFAULT_FREE_MODELS = [
   "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
   "openai/gpt-oss-120b:free",
+  "openai/gpt-oss-20b:free",
   "meta-llama/llama-3.3-70b-instruct:free",
   "google/gemma-3-27b-it:free",
-  "openrouter/free",
+  "google/gemma-3-12b-it:free",
+  "qwen/qwen3-next-80b-a3b-instruct:free",
+  "qwen/qwen3-coder:free",
+  "z-ai/glm-4.5-air:free",
+  "deepseek/deepseek-chat-v3.1:free",
+  "mistralai/mistral-small-3.2-24b-instruct:free",
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+  "inclusionai/ling-3.0-flash-fin:free",
+  "cohere/north-mini-code:free",
 ];
 
-function freeModels(): string[] {
+const isFree = (m: string) => m.endsWith(":free") || m === "openrouter/free";
+const MAX_ATTEMPTS = 10;
+const PER_MODEL_TIMEOUT_MS = 18_000;
+
+let catalogCache: { at: number; ids: string[] } | null = null;
+
+// Live list of models that are actually free right now (pricing 0), cached 10 min.
+async function liveFreeModels(key: string): Promise<string[]> {
+  if (catalogCache && Date.now() - catalogCache.at < 600_000) return catalogCache.ids;
+  try {
+    const r = await fetch("https://openrouter.ai/api/v1/models", {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!r.ok) return catalogCache?.ids ?? [];
+    const j = await r.json();
+    const ids: string[] = (j?.data ?? [])
+      .filter((m: { id?: string; pricing?: { prompt?: string; completion?: string } }) =>
+        typeof m.id === "string" && m.id.endsWith(":free") && Number(m.pricing?.prompt ?? 1) === 0 && Number(m.pricing?.completion ?? 1) === 0)
+      .map((m: { id: string }) => m.id);
+    catalogCache = { at: Date.now(), ids };
+    return ids;
+  } catch {
+    return catalogCache?.ids ?? [];
+  }
+}
+
+// Order: env list -> built-in list (only if still in live catalog, when known) -> other live free models -> openrouter/free last.
+async function freeModels(key: string): Promise<string[]> {
   const raw = process.env.OPENROUTER_MODELS || process.env.OPENROUTER_MODEL || "";
-  const list = raw.split(",").map((s) => s.trim()).filter(Boolean);
-  const free = list.filter((m) => m.endsWith(":free") || m === "openrouter/free");
-  return free.length ? free : DEFAULT_FREE_MODELS;
+  const env = raw.split(",").map((s) => s.trim()).filter(isFree);
+  const live = await liveFreeModels(key);
+  const liveSet = new Set(live);
+  const builtin = live.length ? DEFAULT_FREE_MODELS.filter((m) => liveSet.has(m)) : DEFAULT_FREE_MODELS;
+  const rest = live.filter((m) => !builtin.includes(m) && !env.includes(m));
+  const ordered = [...env.filter((m) => m !== "openrouter/free"), ...builtin, ...rest, "openrouter/free"];
+  return [...new Set(ordered)].slice(0, MAX_ATTEMPTS);
+}
+
+function cleanText(msg: { content?: unknown; reasoning?: unknown } | undefined): string {
+  const c = typeof msg?.content === "string" ? msg.content : "";
+  const text = c.trim() ? c : typeof msg?.reasoning === "string" ? msg.reasoning : "";
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/```(?:json)?/gi, "");
 }
 
 export async function POST(req: Request) {
@@ -92,7 +140,7 @@ export async function POST(req: Request) {
 
   let content = "";
   // Free-only chain: tried in order. Anything not ending in ":free" (or openrouter/free) is dropped.
-  const models = freeModels();
+  const models = await freeModels(key);
   let lastStatus = 0;
   for (const model of models) {
     try {
@@ -102,13 +150,13 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           model,
           temperature: 0.2,
-          max_tokens: 500,
+          max_tokens: 1500, // reasoning models spend tokens thinking; 500 truncated the JSON (HTTP 200 but unparseable)
           messages: [
             { role: "system", content: SYSTEM },
             { role: "user", content: userMsg },
           ],
         }),
-        signal: AbortSignal.timeout(25_000),
+        signal: AbortSignal.timeout(PER_MODEL_TIMEOUT_MS),
       });
       lastStatus = r.status;
       if (!r.ok) {
@@ -117,7 +165,7 @@ export async function POST(req: Request) {
         continue; // 402/404/408/429/5xx etc. -> next free model
       }
       const j = await r.json();
-      const text = j?.choices?.[0]?.message?.content ?? "";
+      const text = cleanText(j?.choices?.[0]?.message);
       if (!text || !parseVerdict(text)) continue; // empty/unreadable -> next model
       content = text;
       break;
