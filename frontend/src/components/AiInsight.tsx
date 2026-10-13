@@ -59,7 +59,7 @@ export default function AiInsight({
           <p style={{ marginTop: 8, fontSize: 14 }}>{verdict.summary}</p>
           {verdict.reasons.length > 0 && <ul>{verdict.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>}
           {verdict.recommended_action && <p className="rec">{verdict.recommended_action}</p>}
-          <p className="disc">Dihasilkan AI dari data laporan saja (tanpa akses berita/sensor), bukan keputusan final petugas.</p>
+          <p className="disc">Dihasilkan AI dari data laporan, gempa BMKG, dan judul berita terbaru (tanpa data sensor), bukan keputusan final petugas.</p>
         </>
       )}
     </div>
