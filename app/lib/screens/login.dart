@@ -126,7 +126,8 @@ class _Numpad extends StatelessWidget {
 
   static const _sub = {'2': 'ABC', '3': 'DEF', '4': 'GHI', '5': 'JKL', '6': 'MNO', '7': 'PQRS', '8': 'TUV', '9': 'WXYZ'};
 
-  Widget key(String d) => Expanded(
+  // Not named `key`: that would clash with the inherited `Widget.key` field.
+  Widget _digit(String d) => Expanded(
         child: Padding(
           padding: const EdgeInsets.all(5),
           child: Material(
@@ -155,12 +156,12 @@ class _Numpad extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
       decoration: BoxDecoration(color: C.primaryTint.withValues(alpha: .6), borderRadius: BorderRadius.circular(20)),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Row(children: [key('1'), key('2'), key('3')]),
-        Row(children: [key('4'), key('5'), key('6')]),
-        Row(children: [key('7'), key('8'), key('9')]),
+        Row(children: [_digit('1'), _digit('2'), _digit('3')]),
+        Row(children: [_digit('4'), _digit('5'), _digit('6')]),
+        Row(children: [_digit('7'), _digit('8'), _digit('9')]),
         Row(children: [
           const Expanded(child: SizedBox()),
-          key('0'),
+          _digit('0'),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(5),

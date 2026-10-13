@@ -1,8 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Backend API -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- GPS for SOS / reports / nearby map (geolocator) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Photo attachment (image_picker camera source) -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+
+    <!-- usesCleartextTraffic: allows the http:// dev backend (10.0.2.2 / LAN IP).
+         Remove it once API_BASE points to an HTTPS domain. -->
     <application
-        android:label="siagaku"
+        android:label="SiagaKu"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
