@@ -532,3 +532,61 @@ table.table tbody tr { transition: background 0.12s; }
   .overlay, .overlay .modal, .toast { animation: none !important; }
   .rcard:hover { transform: none; }
 }
+
+/* ---- Support › Laporan: summary + polish ---- */
+.report-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+  .stat {
+    text-align: left;
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 14px 16px;
+    border-radius: $r-card;
+    background: $card;
+    border: 1px solid $surface;
+    box-shadow: $shadow-sm;
+    cursor: pointer;
+    transition: transform 0.08s, box-shadow 0.15s, border-color 0.15s;
+    b { font-size: 26px; line-height: 1; font-weight: 800; color: $text; }
+    span { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: $muted; font-weight: 600; }
+    &:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08); }
+    &.on { border-color: currentColor; box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.18), $shadow-sm; }
+    &.warn { b { color: $warn-text; } &.on { box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.3), $shadow-sm; } }
+    &.ok   { b { color: $ok; }        &.on { box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.28), $shadow-sm; } }
+    &.bad  { b { color: $danger; }    &.on { box-shadow: 0 0 0 2px rgba(229, 56, 59, 0.28), $shadow-sm; } }
+    animation: stat-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .stat:nth-child(2) { animation-delay: 0.04s; }
+  .stat:nth-child(3) { animation-delay: 0.08s; }
+  .stat:nth-child(4) { animation-delay: 0.12s; }
+}
+@keyframes stat-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (max-width: 720px) { .report-stats { grid-template-columns: repeat(2, 1fr); } }
+
+.report-meta {
+  display: flex; justify-content: space-between; align-items: center;
+  margin: 2px 0 12px; font-size: 13px; color: $muted;
+  b { color: $text; }
+}
+.linklike {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: $primary; font: inherit; font-weight: 600;
+  &:hover { text-decoration: underline; }
+}
+
+.toolbar .icon-btn.refresh {
+  margin-left: auto; flex: none;
+  &:hover { background: $surface; color: $primary; }
+}
+
+.btn.ghost.sm { padding: 6px 14px; font-size: 13px; margin-top: 10px; }
+
+/* Skeleton cards while first load is in flight — frame stays the same shape. */
+.rcard-skel-list { display: flex; flex-direction: column; gap: 12px; }
+.rcard.skel { pointer-events: none; display: flex; flex-direction: column; }
+
+@media (prefers-reduced-motion: reduce) {
+  .report-stats .stat { animation: none; transition: none; &:hover { transform: none; } }
+}
