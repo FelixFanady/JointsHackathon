@@ -76,8 +76,8 @@ class Api {
   /// Returns the citizen's name for a NIK.
   static Future<String> identify(String nik) async => (await _post('/api/mobile/identify', {'nik': nik}))['name'] as String;
 
-  static Future<void> sendSos({required String nik, required double lat, required double lng, required String category, String? photoB64, String? address}) =>
-      _post('/api/mobile/sos', {'nik': nik, 'lat': lat, 'lng': lng, 'category': category, 'photo': photoB64, 'address': address});
+  static Future<void> sendSos({required String nik, required double lat, required double lng, required String category, String? description, String? photoB64, String? address}) =>
+      _post('/api/mobile/sos', {'nik': nik, 'lat': lat, 'lng': lng, 'category': category, 'description': description, 'photo': photoB64, 'address': address});
 
   static Future<void> sendReport({
     required String nik,
@@ -100,16 +100,20 @@ class Api {
   }
 
   static Future<List<NearbyItem>> nearby(double lat, double lng, {double radiusKm = 5}) async {
-    try {
-      final r = await http
-          .get(Uri.parse('$apiBase/api/mobile/nearby?lat=$lat&lng=$lng&radius_km=$radiusKm'))
-          .timeout(const Duration(seconds: 20));
-      final j = _decode(r);
-      return (j['items'] as List).map((e) => NearbyItem.fromJson(e as Map<String, dynamic>)).toList();
-    } on ApiException {
-      rethrow;
-    } catch (_) {
-      throw ApiException('Tidak dapat terhubung ke server.');
+    // Read-only, so it is safe to retry: the dev server can be slow on its first request.
+    for (var attempt = 1;; attempt++) {
+      try {
+        final r = await http
+            .get(Uri.parse('$apiBase/api/mobile/nearby?lat=$lat&lng=$lng&radius_km=$radiusKm'))
+            .timeout(const Duration(seconds: 20));
+        final j = _decode(r);
+        return (j['items'] as List).map((e) => NearbyItem.fromJson(e as Map<String, dynamic>)).toList();
+      } on ApiException {
+        rethrow;
+      } catch (_) {
+        if (attempt >= 3) throw ApiException('Tidak dapat terhubung ke server.');
+        await Future.delayed(Duration(seconds: 2 * attempt));
+      }
     }
   }
 }

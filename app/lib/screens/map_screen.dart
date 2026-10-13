@@ -113,7 +113,23 @@ class _MapScreenState extends State<MapScreen> {
             ]),
             const SizedBox(height: 12),
             if (loading) const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
-            if (error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(error!, style: const TextStyle(color: C.emergency))),
+            if (error != null)
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(16)),
+                child: Row(children: [
+                  const Icon(Icons.wifi_off_rounded, color: C.emergencyDark, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(error!, style: const TextStyle(color: C.emergencyDark, fontWeight: FontWeight.w500))),
+                  TextButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Coba lagi'),
+                    style: TextButton.styleFrom(foregroundColor: C.emergencyDark),
+                  ),
+                ]),
+              ),
             if (!loading && error == null && list.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Tidak ada data aktif dalam radius 5 km dalam 24 jam terakhir.', style: TextStyle(color: C.muted))),
             for (final i in list)
               Padding(
