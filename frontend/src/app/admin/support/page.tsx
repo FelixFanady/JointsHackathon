@@ -1,4 +1,6 @@
 import { db } from "@/lib/supabase";
+import { loadAllAreas } from "@/lib/supportArea";
+import { ALL_AREAS } from "@/lib/provinces";
 import type { Profile } from "@/lib/types";
 import SupportClient from "./SupportClient";
 
@@ -6,11 +8,16 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Akun Support — SiagaKu Admin" };
 
 export default async function SupportPage() {
-  const { data } = await db()
-    .from("profiles")
-    .select("id,username,full_name,role,unit,active,created_at")
-    .eq("role", "support")
-    .order("created_at", { ascending: false });
+  const [{ data }, areas] = await Promise.all([
+    db()
+      .from("profiles")
+      .select("id,username,full_name,role,unit,active,created_at")
+      .eq("role", "support")
+      .order("created_at", { ascending: false }),
+    loadAllAreas(),
+  ]);
+  // No assignment saved yet = whole world (same default the server applies).
+  const rows = ((data ?? []) as Profile[]).map((p) => ({ ...p, areas: areas[p.id] ?? [ALL_AREAS] }));
 
   return (
     <div className="page">
@@ -21,7 +28,7 @@ export default async function SupportPage() {
           <p>Buat kredensial untuk petugas yang akan login di web. Petugas tidak bisa mendaftar sendiri.</p>
         </div>
       </div>
-      <SupportClient initial={(data ?? []) as Profile[]} />
+      <SupportClient initial={rows} />
     </div>
   );
 }

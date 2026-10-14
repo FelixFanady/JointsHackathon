@@ -8,8 +8,10 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../api.dart';
+import '../auto_refresh.dart';
 import '../sos_sound.dart';
 import '../theme.dart';
+import '../widgets/sent_view.dart';
 
 const holdDuration = Duration(seconds: 3);
 
@@ -20,7 +22,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver, AutoRefresh {
   late final AnimationController hold = AnimationController(vsync: this, duration: holdDuration);
   List<NearbyItem>? alerts;
   bool locationFailed = false;
@@ -40,8 +42,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
+  // Silent refresh of "Status Sekitar" (every 20 s while Beranda is visible, and after a new SOS/report).
+  // Skipped while the SOS button is being held so nothing re-renders under the user's finger.
+  @override
+  Future<void> autoRefresh() async {
+    if (hold.isAnimating) return;
+    final p = await recentPlace();
+    if (p == null) return;
+    final items = await Api.nearby(p.lat, p.lng);
+    if (mounted) setState(() { locationFailed = false; alerts = items.where((e) => e.kind == 'sos').toList(); });
+  }
+
   Future<void> _loadNearby() async {
     final (p, _) = await currentPlace();
+    if (p != null) rememberPlace(p);
     if (p == null) {
       if (mounted) setState(() { locationFailed = true; alerts = []; });
       return;
@@ -228,75 +242,152 @@ class _SosButtonState extends State<_SosButton> with SingleTickerProviderStateMi
             final shake = pressed ? math.sin(t * 2 * math.pi * 40) * 1.6 * v : 0.0;
             final remaining = (holdDuration.inSeconds - v * holdDuration.inSeconds).ceil().clamp(1, holdDuration.inSeconds);
 
+            // Dome sinks into its housing while held.
+            final sink = down ? 4.0 : 0.0;
+
             return SizedBox(
-              width: 300, height: 300,
+              width: 310, height: 310,
               child: Stack(alignment: Alignment.center, children: [
-                // Idle: three ripples spreading outward.
+                // Idle: three thin ripple rings spreading outward (radar pulse).
                 if (!pressed)
                   for (var k = 0; k < 3; k++)
-                    _ring(
-                      size: 210 + 90 * ((t + k / 3) % 1),
-                      color: C.emergency.withValues(alpha: .22 * (1 - (t + k / 3) % 1)),
+                    _pulse(
+                      size: 236 + 74 * ((t + k / 3) % 1),
+                      fade: 1 - (t + k / 3) % 1,
                     ),
-                // Pressed: a strong glow that grows with the hold.
+                // Pressed: a warm glow that grows and throbs with the hold.
                 if (pressed)
                   _ring(
-                    size: 240 + 50 * v + 6 * math.sin(t * 2 * math.pi * 6),
-                    color: C.emergency.withValues(alpha: .14 + .22 * v),
+                    size: 262 + 40 * v + 5 * math.sin(t * 2 * math.pi * 6),
+                    color: C.emergency.withValues(alpha: .12 + .2 * v),
                   ),
-                // Progress ring.
-                SizedBox(
-                  width: 246, height: 246,
-                  child: CircularProgressIndicator(
-                    value: v,
-                    strokeWidth: 10,
-                    strokeCap: StrokeCap.round,
-                    color: C.emergencyDark,
-                    backgroundColor: pressed ? C.emergency.withValues(alpha: .15) : Colors.transparent,
+                // Housing: a soft raised plate the button sits in.
+                Transform.scale(
+                  scale: pressed ? 1 : breath,
+                  child: Container(
+                    width: 252, height: 252,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Colors.white, Color(0xFFFDE8E8)],
+                      ),
+                      boxShadow: [
+                        BoxShadow(color: C.emergency.withValues(alpha: .22), blurRadius: 34, offset: const Offset(0, 16)),
+                        const BoxShadow(color: Colors.white, blurRadius: 10, offset: Offset(-4, -4)),
+                      ],
+                    ),
+                  ),
+                ),
+                // 3-segment hold ring: one segment per second.
+                Transform.scale(
+                  scale: pressed ? 1 : breath,
+                  child: CustomPaint(
+                    size: const Size(234, 234),
+                    painter: _HoldRingPainter(v: v, pressed: pressed),
                   ),
                 ),
                 // The button itself: sinks when pressed, springs back on release.
                 Transform.translate(
-                  offset: Offset(shake, 0),
+                  offset: Offset(shake, sink),
                   child: AnimatedScale(
-                    scale: down ? .92 : 1,
+                    scale: down ? .93 : 1,
                     duration: Duration(milliseconds: down ? 140 : 520),
                     curve: down ? Curves.easeOut : Curves.elasticOut,
                     child: Transform.scale(
                       scale: pressed ? 1 : breath,
                       child: Container(
-                        width: 214, height: 214,
+                        width: 200, height: 200,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: RadialGradient(
-                            center: const Alignment(-.35, -.45),
-                            radius: 1.1,
+                            center: const Alignment(-.3, -.4),
+                            radius: 1.05,
                             colors: pressed
-                                ? [Color.lerp(C.emergency, C.emergencyDark, v)!, C.emergencyDark]
+                                ? [Color.lerp(C.emergency, C.emergencyDark, v)!, C.emergencyDark, const Color(0xFF8E0B17)]
                                 : const [C.emergencyGlow, C.emergency, C.emergencyDark],
+                            stops: const [0, .55, 1],
                           ),
-                          border: Border.all(color: Colors.white.withValues(alpha: .35), width: 4),
                           boxShadow: [
+                            // Deep colored drop shadow = "lifted"; shrinks when pressed in.
                             BoxShadow(
-                              color: C.emergency.withValues(alpha: pressed ? .35 + .3 * v : .4),
-                              blurRadius: pressed ? 24 + 30 * v : 32,
-                              spreadRadius: pressed ? 2 + 6 * v : 0,
-                              offset: Offset(0, pressed ? 4 : 12),
+                              color: C.emergencyDark.withValues(alpha: pressed ? .3 + .25 * v : .45),
+                              blurRadius: pressed ? 14 + 20 * v : 26,
+                              offset: Offset(0, pressed ? 3 : 12),
                             ),
                           ],
                         ),
-                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(pressed ? Icons.emergency_share : Icons.warning_amber_rounded, size: 52, color: Colors.white),
-                          const SizedBox(height: 2),
-                          Transform.scale(
-                            scale: pressed ? pop : 1,
-                            child: Text(
-                              pressed ? '$remaining' : 'SOS',
-                              style: const TextStyle(fontSize: 46, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 1.5,
-                                  shadows: [Shadow(color: Color(0x55000000), blurRadius: 8, offset: Offset(0, 2))]),
+                        child: ClipOval(
+                          child: Stack(alignment: Alignment.center, children: [
+                            // Slow light sheen sweeping around the dome while idle.
+                            if (!pressed)
+                              Positioned.fill(
+                                child: Transform.rotate(
+                                  angle: t * 2 * math.pi,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: SweepGradient(colors: [
+                                        Colors.white.withValues(alpha: 0),
+                                        Colors.white.withValues(alpha: .16),
+                                        Colors.white.withValues(alpha: 0),
+                                        Colors.white.withValues(alpha: 0),
+                                      ], stops: const [0, .08, .18, 1]),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            // Glossy highlight on the top half (glass dome look).
+                            Positioned(
+                              top: 8, left: 26, right: 26,
+                              child: Container(
+                                height: 86,
+                                decoration: BoxDecoration(
+                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(100), bottom: Radius.circular(70)),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [Colors.white.withValues(alpha: pressed ? .18 : .38), Colors.white.withValues(alpha: 0)],
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ]),
+                            // Bottom inner shade for depth.
+                            Positioned.fill(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.center,
+                                    end: Alignment.bottomCenter,
+                                    colors: [Colors.black.withValues(alpha: 0), Colors.black.withValues(alpha: .16)],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Thin inner rim.
+                            Positioned.fill(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white.withValues(alpha: .28), width: 2),
+                                ),
+                              ),
+                            ),
+                            Column(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(pressed ? Icons.emergency_share : Icons.warning_amber_rounded, size: 46, color: Colors.white,
+                                  shadows: const [Shadow(color: Color(0x44000000), blurRadius: 6, offset: Offset(0, 2))]),
+                              const SizedBox(height: 2),
+                              Transform.scale(
+                                scale: pressed ? pop : 1,
+                                child: Text(
+                                  pressed ? '$remaining' : 'SOS',
+                                  style: const TextStyle(fontSize: 48, height: 1.05, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2,
+                                      shadows: [Shadow(color: Color(0x66000000), blurRadius: 10, offset: Offset(0, 3))]),
+                                ),
+                              ),
+                            ]),
+                          ]),
+                        ),
                       ),
                     ),
                   ),
@@ -312,6 +403,72 @@ class _SosButtonState extends State<_SosButton> with SingleTickerProviderStateMi
   Widget _ring({required double size, required Color color}) => IgnorePointer(
         child: Container(width: size, height: size, decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
       );
+
+  // Ripple: a thin outline with a faint fill, fading as it grows.
+  Widget _pulse({required double size, required double fade}) => IgnorePointer(
+        child: Container(
+          width: size, height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: C.emergency.withValues(alpha: .07 * fade),
+            border: Border.all(color: C.emergency.withValues(alpha: .45 * fade), width: 2),
+          ),
+        ),
+      );
+}
+
+/// Hold progress drawn as 3 segments (one per second), with a glowing head dot.
+class _HoldRingPainter extends CustomPainter {
+  _HoldRingPainter({required this.v, required this.pressed});
+  final double v;
+  final bool pressed;
+
+  static const _segments = 3;
+  static const _gap = 14 * math.pi / 180;
+  static const _stroke = 9.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.width / 2 - _stroke / 2;
+    final rect = Rect.fromCircle(center: c, radius: r);
+    const seg = 2 * math.pi / _segments;
+    const sweep = seg - _gap;
+
+    final track = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _stroke
+      ..strokeCap = StrokeCap.round
+      ..color = C.emergency.withValues(alpha: pressed ? .16 : .10);
+    final fill = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _stroke
+      ..strokeCap = StrokeCap.round;
+
+    for (var i = 0; i < _segments; i++) {
+      final start = -math.pi / 2 + i * seg + _gap / 2;
+      canvas.drawArc(rect, start, sweep, false, track);
+      final p = (v * _segments - i).clamp(0.0, 1.0);
+      if (p > 0) {
+        fill.color = Color.lerp(C.emergency, C.emergencyDark, (i + p) / _segments)!;
+        canvas.drawArc(rect, start, sweep * p, false, fill);
+      }
+    }
+
+    // Glowing head that leads the fill.
+    if (pressed && v > 0 && v < 1) {
+      final i = (v * _segments).floor().clamp(0, _segments - 1);
+      final p = (v * _segments - i).clamp(0.0, 1.0);
+      final a = -math.pi / 2 + i * seg + _gap / 2 + sweep * p;
+      final head = c + Offset(math.cos(a), math.sin(a)) * r;
+      canvas.drawCircle(head, 11, Paint()..color = C.emergency.withValues(alpha: .25)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
+      canvas.drawCircle(head, 7, Paint()..color = Colors.white);
+      canvas.drawCircle(head, 4, Paint()..color = C.emergencyDark);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_HoldRingPainter old) => old.v != v || old.pressed != pressed;
 }
 
 /// Emergency flow: Foto (opsional) -> Jenis bencana -> Konfirmasi -> Terkirim.
@@ -327,6 +484,8 @@ class _SosFlowState extends State<SosFlow> {
   Uint8List? photoBytes;
   String? category;
   Place? place;
+  String? address; // readable street address of [place] (null while looking up / not found)
+  bool addressLoading = false;
   String? locError;
   bool sending = false;
   String? error;
@@ -352,7 +511,11 @@ class _SosFlowState extends State<SosFlow> {
 
   Future<void> _locate() async {
     final (p, e) = await currentPlace();
-    if (mounted) setState(() { place = p; locError = e; });
+    if (!mounted) return;
+    setState(() { place = p; locError = e; address = null; addressLoading = p != null; });
+    if (p == null) return;
+    final a = await addressFor(p);
+    if (mounted && place == p) setState(() { address = a; addressLoading = false; });
   }
 
   Future<void> _pick(ImageSource src) async {
@@ -376,6 +539,7 @@ class _SosFlowState extends State<SosFlow> {
       await Api.sendSos(
         nik: session.nik!, lat: place!.lat, lng: place!.lng, category: category ?? 'Darurat', photoB64: photoB64,
         description: isOther && otherText.isNotEmpty ? otherText : null,
+        address: address,
       );
       HapticFeedback.heavyImpact();
       if (mounted) setState(() => step = 3);
@@ -597,6 +761,13 @@ class _SosFlowState extends State<SosFlow> {
     );
   }
 
+  /// What the citizen sees as "where": street address when known, never raw coordinates.
+  String get locationText {
+    if (place == null) return locError ?? 'Mencari lokasi Anda…';
+    if (address != null) return address!;
+    return addressLoading ? 'Mencari alamat…' : 'Lokasi GPS terkunci (alamat tidak ditemukan)';
+  }
+
   Widget _locationBanner() => Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(color: C.primaryTint, borderRadius: BorderRadius.circular(16)),
@@ -605,7 +776,9 @@ class _SosFlowState extends State<SosFlow> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              place != null ? 'GPS terkunci • ${place!.lat.toStringAsFixed(5)}, ${place!.lng.toStringAsFixed(5)}' : (locError ?? 'Mencari lokasi Anda…'),
+              place != null ? 'GPS terkunci • $locationText' : locationText,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
             ),
           ),
@@ -617,6 +790,8 @@ class _SosFlowState extends State<SosFlow> {
         Expanded(
           child: ListView(padding: const EdgeInsets.all(16), children: [
             const Text('Konfirmasi laporan', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -.4)),
+            const SizedBox(height: 6),
+            const Text('Periksa sekali lagi, lalu geser tombol di bawah untuk mengirim.', style: TextStyle(color: C.muted)),
             const SizedBox(height: 16),
             AppCard(
               child: Column(children: [
@@ -624,43 +799,300 @@ class _SosFlowState extends State<SosFlow> {
                 const Divider(height: 24),
                 _row(iconForCategory(category ?? ''), 'Jenis kejadian', categoryLabel),
                 const Divider(height: 24),
-                _row(Icons.my_location, 'Lokasi', place != null ? '${place!.lat.toStringAsFixed(5)}, ${place!.lng.toStringAsFixed(5)}' : (locError ?? 'Mencari…')),
+                _row(
+                  Icons.location_on_outlined,
+                  'Lokasi',
+                  locationText,
+                  muted: place == null || address == null,
+                  trailing: place == null && locError != null
+                      ? TextButton(onPressed: _locate, child: const Text('Coba lagi'))
+                      : addressLoading
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : null,
+                ),
                 const Divider(height: 24),
-                _row(Icons.photo_camera_outlined, 'Foto', photoBytes != null ? 'Terlampir' : 'Tidak ada'),
+                _row(Icons.photo_camera_outlined, 'Foto', photoBytes != null ? 'Terlampir' : 'Tidak ada', muted: photoBytes == null),
               ]),
             ),
             if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: C.emergency, fontWeight: FontWeight.w500))),
           ]),
         ),
         _foot(
-          primary: PrimaryButton(label: 'Kirim Panggilan Darurat', color: C.emergency, loading: sending, onPressed: _send),
-          secondary: SecondaryButton(label: 'Kembali', onPressed: sending ? null : () => setState(() => step = 1)),
-        ),
-      ]);
-
-  Widget _row(IconData i, String k, String v) => Row(children: [
-        Icon(i, color: C.primary),
-        const SizedBox(width: 12),
-        Text(k, style: const TextStyle(color: C.muted)),
-        const Spacer(),
-        Flexible(child: Text(v, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w600))),
-      ]);
-
-  Widget _doneStep() => Column(children: [
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const CircleAvatar(radius: 48, backgroundColor: C.okBg, child: Icon(Icons.check_rounded, size: 56, color: C.ok)),
-              const SizedBox(height: 20),
-              const Text('Laporan Diterima', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              const Text('Panggilan darurat Anda sudah masuk ke petugas. Tetap tenang dan berada di tempat aman.', textAlign: TextAlign.center, style: TextStyle(color: C.muted, fontSize: 16)),
-            ]),
+          primary: _SlideToSend(label: 'Geser untuk kirim SOS', loading: sending, onConfirmed: _send),
+          secondary: Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: _BackButton(onPressed: sending ? null : () => setState(() => step = 1)),
           ),
         ),
-        _foot(primary: PrimaryButton(label: 'Selesai', onPressed: () => Navigator.pop(context))),
       ]);
+
+  // Icon tile | label above value: every row has the same left edge, long values (addresses) wrap cleanly.
+  Widget _row(IconData i, String k, String v, {bool muted = false, Widget? trailing}) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 40, height: 40,
+          decoration: BoxDecoration(color: C.primaryTint, borderRadius: BorderRadius.circular(12)),
+          child: Icon(i, color: C.primary, size: 22),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(k, style: const TextStyle(color: C.muted, fontSize: 13)),
+            const SizedBox(height: 2),
+            Text(v, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, height: 1.3, color: muted ? C.muted : null)),
+          ]),
+        ),
+        if (trailing != null) Padding(padding: const EdgeInsets.only(left: 8, top: 10), child: trailing),
+      ]);
+
+  // Shared with the citizen report flow (widgets/sent_view.dart) so both confirmations look the same.
+  Widget _doneStep() => SentView(
+        title: 'Laporan Diterima',
+        message: 'Panggilan darurat Anda sudah masuk ke petugas. Tetap tenang dan berada di tempat aman.',
+        onDone: () => Navigator.pop(context),
+      );
+}
+
+/// Slide-to-send for the emergency call: a deliberate gesture so it is never sent by an accidental tap.
+/// Drag the thumb to the end (>= 85 %) to confirm; let go earlier and it springs back.
+/// Screen readers get a plain "double-tap to send" action instead of the drag.
+class _SlideToSend extends StatefulWidget {
+  const _SlideToSend({required this.label, required this.onConfirmed, this.loading = false});
+  final String label;
+  final VoidCallback onConfirmed;
+  final bool loading;
+  @override
+  State<_SlideToSend> createState() => _SlideToSendState();
+}
+
+class _SlideToSendState extends State<_SlideToSend> with TickerProviderStateMixin {
+  static const _h = 68.0, _pad = 6.0;
+  late final AnimationController back = AnimationController(vsync: this, duration: const Duration(milliseconds: 360));
+  // Idle hint: a light sweep across the label and chevrons that "flow" towards the end.
+  late final AnimationController hint = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+  double drag = 0; // 0..1
+  double from = 0;
+  bool dragging = false;
+  bool done = false;
+
+  @override
+  void initState() {
+    super.initState();
+    back.addListener(() => setState(() => drag = (from * (1 - Curves.easeOutBack.transform(back.value))).clamp(0.0, 1.0)));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.of(context).disableAnimations) {
+      hint.stop();
+    } else if (!hint.isAnimating) {
+      hint.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _SlideToSend old) {
+    super.didUpdateWidget(old);
+    // Sending finished without leaving the screen (e.g. an error): let them slide again.
+    if (old.loading && !widget.loading && done) {
+      done = false;
+      _springBack();
+    }
+  }
+
+  @override
+  void dispose() {
+    back.dispose();
+    hint.dispose();
+    super.dispose();
+  }
+
+  void _springBack() {
+    from = drag;
+    back.forward(from: 0);
+  }
+
+  void _confirm() {
+    if (done || widget.loading) return;
+    setState(() { done = true; dragging = false; drag = 1; });
+    HapticFeedback.heavyImpact();
+    widget.onConfirmed();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final busy = widget.loading || done;
+    final ready = drag >= .85;
+    return Semantics(
+      button: true,
+      label: widget.label,
+      onTap: busy ? null : _confirm,
+      child: SizedBox(
+        width: double.infinity,
+        height: _h,
+        child: LayoutBuilder(builder: (context, c) {
+          final thumb = _h - _pad * 2;
+          final travel = (c.maxWidth - thumb - _pad * 2).clamp(1.0, double.infinity);
+          final x = travel * drag;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragStart: busy ? null : (_) { back.stop(); setState(() => dragging = true); },
+            onHorizontalDragUpdate: busy
+                ? null
+                : (d) {
+                    final v = (drag + d.delta.dx / travel).clamp(0.0, 1.0);
+                    if ((v * 5).floor() != (drag * 5).floor()) HapticFeedback.selectionClick();
+                    if (v >= .85 && drag < .85) HapticFeedback.mediumImpact();
+                    setState(() => drag = v);
+                  },
+            onHorizontalDragEnd: busy ? null : (_) { setState(() => dragging = false); ready ? _confirm() : _springBack(); },
+            child: AnimatedBuilder(
+              animation: hint,
+              builder: (_, __) => Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(_h / 2),
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [Color.lerp(C.emergencyGlow, C.emergency, .35 + .65 * (1 - drag))!, Color.lerp(C.emergency, C.emergencyDark, .5 + .5 * drag)!],
+                  ),
+                  boxShadow: [
+                    BoxShadow(color: C.emergency.withValues(alpha: .28 + .2 * drag), blurRadius: 20 + 10 * drag, offset: const Offset(0, 8)),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(_h / 2),
+                  child: Stack(children: [
+                    // Glossy top highlight.
+                    Positioned(
+                      left: 0, right: 0, top: 0, height: _h / 2,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.white.withValues(alpha: .18), Colors.white.withValues(alpha: 0)],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Filled trail that follows the thumb.
+                    Positioned(
+                      left: _pad, top: _pad, bottom: _pad,
+                      width: thumb + x,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .16 + .1 * drag),
+                          borderRadius: BorderRadius.circular(thumb / 2),
+                        ),
+                      ),
+                    ),
+                    // Label + flowing chevrons, centred in the free space; fades as the thumb passes.
+                    Positioned.fill(
+                      left: thumb + _pad + 6,
+                      right: 14,
+                      child: Opacity(
+                        opacity: busy ? 1 : (1 - drag * 1.4).clamp(0.0, 1.0),
+                        child: Center(
+                          child: busy
+                              ? const Text('Mengirim panggilan darurat…',
+                                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15))
+                              : Row(mainAxisSize: MainAxisSize.min, children: [
+                                  Flexible(
+                                    child: ShaderMask(
+                                      blendMode: BlendMode.srcIn,
+                                      shaderCallback: (r) {
+                                        final t = hint.value * 2 - .5; // sweep from left to right
+                                        return LinearGradient(
+                                          colors: const [Color(0xCCFFFFFF), Colors.white, Color(0xCCFFFFFF)],
+                                          stops: [(t - .2).clamp(0.0, 1.0), t.clamp(0.0, 1.0), (t + .2).clamp(0.0, 1.0)],
+                                        ).createShader(r);
+                                      },
+                                      child: Text(widget.label,
+                                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15.5, letterSpacing: .2)),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  for (var k = 0; k < 3; k++)
+                                    Opacity(
+                                      opacity: .35 + .65 * (1 - ((hint.value * 3 - k) % 3 - 1).abs().clamp(0.0, 1.0)),
+                                      child: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 20),
+                                    ),
+                                ]),
+                        ),
+                      ),
+                    ),
+                    // Thumb.
+                    Positioned(
+                      left: _pad + x,
+                      top: _pad,
+                      child: AnimatedScale(
+                        scale: dragging ? 1.06 : 1,
+                        duration: const Duration(milliseconds: 140),
+                        child: Container(
+                          width: thumb, height: thumb,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white.withValues(alpha: .6), width: 3),
+                            boxShadow: [BoxShadow(color: C.emergencyDark.withValues(alpha: .35), blurRadius: 10, offset: const Offset(0, 3))],
+                          ),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 180),
+                            transitionBuilder: (w, a) => ScaleTransition(scale: a, child: w),
+                            child: busy
+                                ? const Padding(key: ValueKey('busy'), padding: EdgeInsets.all(15), child: CircularProgressIndicator(strokeWidth: 3, color: C.emergency))
+                                : Icon(
+                                    ready ? Icons.check_rounded : Icons.double_arrow_rounded,
+                                    key: ValueKey(ready),
+                                    color: ready ? C.ok : C.emergency,
+                                    size: 28,
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+/// Outlined "Kembali" pill under the slide button: clearly a secondary action, same width as the slider.
+class _BackButton extends StatelessWidget {
+  const _BackButton({required this.onPressed});
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(Icons.arrow_back_rounded, size: 20),
+        label: const Text('Kembali', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: C.text,
+          backgroundColor: Colors.white,
+          disabledForegroundColor: C.muted.withValues(alpha: .6),
+          side: BorderSide(color: enabled ? C.outline : C.outline.withValues(alpha: .5), width: 1.5),
+          shape: const StadiumBorder(),
+          elevation: 0,
+        ).copyWith(
+          overlayColor: WidgetStatePropertyAll(C.primary.withValues(alpha: .06)),
+        ),
+      ),
+    );
+  }
 }
 
 class _SuggestChip extends StatelessWidget {

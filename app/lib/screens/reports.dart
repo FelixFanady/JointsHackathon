@@ -7,8 +7,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../api.dart';
+import '../auto_refresh.dart';
 import '../theme.dart';
 import 'report_detail_sheet.dart';
+import '../widgets/sent_view.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -16,7 +18,7 @@ class ReportsScreen extends StatefulWidget {
   State<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-class _ReportsScreenState extends State<ReportsScreen> {
+class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserver, AutoRefresh {
   int tab = 0;
   List<MyReport>? mine;
   List<NearbyItem>? around;
@@ -26,6 +28,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  // Silent refresh (every 20 s while visible, and right after a new SOS/report): no error reset, no spinner.
+  @override
+  Future<void> autoRefresh() async {
+    final nik = session.nik;
+    if (nik == null) return;
+    final m = await Api.myReports(nik);
+    if (mounted) setState(() { mine = m; error = null; });
+    final p = await recentPlace();
+    if (p == null) return;
+    final n = await Api.nearby(p.lat, p.lng);
+    if (mounted) setState(() => around = n.where((e) => e.kind == 'report').toList());
   }
 
   Future<void> _load() async {
@@ -38,6 +53,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
     final (p, _) = await currentPlace();
     if (p != null) {
+      rememberPlace(p);
       try {
         final n = await Api.nearby(p.lat, p.lng);
         if (mounted) setState(() => around = n.where((e) => e.kind == 'report').toList());
@@ -231,36 +247,23 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         description: desc.text.trim(), danger: danger ?? false, photoB64: photoB64,
       );
       if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0, end: 1),
-                duration: const Duration(milliseconds: 600),
-                curve: Curves.elasticOut,
-                builder: (_, v, c) => Transform.scale(scale: v, child: c),
-                child: Container(
-                  width: 84, height: 84,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: C.okBg, border: Border.all(color: C.ok.withValues(alpha: .25), width: 6)),
-                  child: const Icon(Icons.check_rounded, size: 48, color: C.ok),
-                ),
+      // Same "sent" screen as after an SOS (widgets/sent_view.dart). Replacing this form means
+      // "Selesai" returns straight to the reports list, which receives `true` and refreshes.
+      Navigator.of(context).pushReplacement<void, bool>(
+        MaterialPageRoute(
+          builder: (ctx) => Scaffold(
+            backgroundColor: C.surface,
+            body: SafeArea(
+              child: SentView(
+                title: 'Laporan Diterima',
+                message: 'Laporan Anda sudah masuk ke petugas dan akan segera diverifikasi. Pantau statusnya di tab Laporan Saya.',
+                onDone: () => Navigator.pop(ctx),
               ),
-              const SizedBox(height: 18),
-              const Text('Laporan Terkirim', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              const Text('Terima kasih sudah peduli. Petugas akan memverifikasi laporan Anda. Pantau statusnya di tab Laporan Saya.',
-                  textAlign: TextAlign.center, style: TextStyle(color: C.muted, height: 1.45)),
-              const SizedBox(height: 20),
-              PrimaryButton(label: 'Selesai', onPressed: () => Navigator.pop(ctx)),
-            ]),
+            ),
           ),
         ),
+        result: true,
       );
-      if (mounted) Navigator.pop(context, true);
       return;
     } on ApiException catch (e) {
       setState(() => error = e.message);

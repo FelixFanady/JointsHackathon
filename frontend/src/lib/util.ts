@@ -20,6 +20,18 @@ export function maskNik(nik: string | null): string {
 export const STATUS_LABEL = { pending: "Menunggu", valid: "Valid", false: "Palsu" } as const;
 export const KIND_LABEL = { sos: "SOS", report: "Laporan" } as const;
 
+/**
+ * Status as the console shows it. "review" = Valid but under review: the automatic AI + BMKG check
+ * validated it (reviewed_by is empty) and a human still has to confirm the AI was right (-> Valid)
+ * or wrong (-> Palsu). Stored as status "valid" without a reviewer, so no schema change is needed.
+ */
+export type ViewStatus = "pending" | "review" | "valid" | "false";
+export const VIEW_STATUS_LABEL: Record<ViewStatus, string> = { pending: "Menunggu", review: "Valid · Perlu ditinjau", valid: "Valid", false: "Palsu" };
+export function viewStatus(r: { status: string; reviewed_by?: string | null }): ViewStatus {
+  if (r.status === "valid") return r.reviewed_by ? "valid" : "review";
+  return r.status === "false" ? "false" : "pending";
+}
+
 /** Greedy distance clustering (haversine). Fine for a few thousand points. */
 export type Cluster<T extends { lat: number; lng: number }> = { lat: number; lng: number; items: T[] };
 

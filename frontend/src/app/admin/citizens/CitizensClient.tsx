@@ -7,6 +7,7 @@ import AddressPicker from "@/components/AddressPicker";
 import { formatDateTime, maskNik } from "@/lib/util";
 import { compressImage, dataUriKb } from "@/lib/image";
 import type { Citizen } from "@/lib/types";
+import Pager, { usePaged } from "@/components/Pager";
 
 type ProfileForm = {
   full_name: string;
@@ -74,6 +75,7 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
         )
       : initial;
   }, [initial, q]);
+  const paged = usePaged(rows, q);
 
   function flash(msg: string) {
     setToast(msg);
@@ -226,7 +228,7 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((c) => {
+                {paged.slice.map((c) => {
                   const on = isActive(c);
                   return (
                   <tr key={c.nik} className={`${on ? "" : "row-off"} ${rowFlash[c.nik] ? `flash-${rowFlash[c.nik]}` : ""}`}>
@@ -296,6 +298,7 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
             </table>
           )}
         </div>
+        <Pager {...paged} label="NIK" />
       </div>
 
       {adding && (

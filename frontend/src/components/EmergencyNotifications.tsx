@@ -17,6 +17,79 @@ export type SosNotif = {
   lng: number;
 };
 
+// ---- "already alerted" memory, shared by every tab and kept across reloads/page switches ----
+// Each SOS rings + pops a desktop notification exactly ONCE per browser, no matter how often the
+// list re-polls, the page remounts, or several console tabs are open.
+const NOTIFIED_KEY = "siagaku_sos_notified";
+const SEEN_KEY = "siagaku_sos_seen";
+const MAX_REMEMBERED = 400;
+
+function loadIds(key: string): Set<string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) ?? "[]");
+    return new Set(Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+function saveIds(key: string, ids: Set<string>) {
+  try {
+    localStorage.setItem(key, JSON.stringify([...ids].slice(-MAX_REMEMBERED)));
+  } catch { /* storage full / disabled: in-memory only */ }
+}
+
+// ---- alert sound (Web Audio, no file to load) ----
+let audioCtx: AudioContext | null = null;
+function ctx(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  try {
+    audioCtx ??= new AudioContext();
+    return audioCtx;
+  } catch {
+    return null;
+  }
+}
+// Browsers only allow sound after the user has interacted with the page once: unlock on the first click/key.
+if (typeof window !== "undefined") {
+  const unlock = () => { ctx()?.resume().catch(() => {}); };
+  window.addEventListener("pointerdown", unlock, { once: true });
+  window.addEventListener("keydown", unlock, { once: true });
+}
+
+/**
+ * Emergency chime: two rising "ding-dong-DING" phrases (~1.6 s), a bell-like tone (sine + soft
+ * overtone, quick attack, smooth decay). Urgent but not harsh, and clearly different from a UI click.
+ */
+function playSosChime() {
+  const a = ctx();
+  if (!a) return;
+  if (a.state === "suspended") a.resume().catch(() => {});
+  const master = a.createGain();
+  master.gain.value = 0.22;
+  master.connect(a.destination);
+  const bell = (freq: number, at: number, dur: number) => {
+    for (const [mult, vol] of [[1, 1], [2.01, 0.28], [3.02, 0.08]] as const) {
+      const o = a.createOscillator();
+      const g = a.createGain();
+      o.type = "sine";
+      o.frequency.value = freq * mult;
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(vol, at + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(g);
+      g.connect(master);
+      o.start(at);
+      o.stop(at + dur + 0.05);
+    }
+  };
+  const t = a.currentTime + 0.02;
+  for (const off of [0, 0.82]) {
+    bell(784, t + off, 0.5); // G5
+    bell(988, t + off + 0.16, 0.5); // B5
+    bell(1319, t + off + 0.32, 0.75); // E6
+  }
+}
+
 /**
  * Emergency notification bell for the support console. When the app fires an
  * SOS it lands in `reports` (kind="sos"); here we surface each recent SOS as a
@@ -29,8 +102,11 @@ export default function EmergencyNotifications({
   users,
   windowMinutes,
   onLocate,
+  loaded = true,
 }: {
   reports: Report[];
+  /** False until the first SOS fetch finished (so an empty initial list is not taken as the baseline). */
+  loaded?: boolean;
   users: DirectoryUser[];
   windowMinutes: number;
   onLocate?: (lat: number, lng: number) => void;
@@ -92,34 +168,43 @@ export default function EmergencyNotifications({
     if (typeof Notification !== "undefined") setPermission(Notification.permission);
   }, []);
 
-  // Fire a browser notification + sound for genuinely new SOS (skip the very
-  // first render so we don't blast everything on page load).
+  // Restore read state (badge) from earlier visits / other tabs.
   useEffect(() => {
+    setSeen(loadIds(SEEN_KEY));
+    const onStorage = (e: StorageEvent) => { if (e.key === SEEN_KEY) setSeen(loadIds(SEEN_KEY)); };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  // Alert ONCE per SOS. `notified` (localStorage) is separate from `seen` (opened the bell), so a
+  // re-poll or a page switch never re-alerts an SOS that already rang. On the very first load we only
+  // record what is there, so opening the console does not blast every recent SOS.
+  useEffect(() => {
+    if (!loaded) return;
+    const notified = loadIds(NOTIFIED_KEY);
     if (firstRun.current) {
       firstRun.current = false;
-      setSeen(new Set(notifs.map((n) => n.id)));
-      return;
+      if (!localStorage.getItem(NOTIFIED_KEY)) {
+        notifs.forEach((n) => notified.add(n.id));
+        saveIds(NOTIFIED_KEY, notified);
+        return;
+      }
     }
-    const fresh = notifs.filter((n) => !seen.has(n.id));
+    const fresh = notifs.filter((n) => !notified.has(n.id));
     if (fresh.length === 0) return;
+    fresh.forEach((n) => notified.add(n.id));
+    saveIds(NOTIFIED_KEY, notified); // claim first, so another open tab does not ring for the same SOS
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
       fresh.slice(0, 3).forEach((n) => {
         new Notification("🚨 SOS Darurat", {
           body: `${n.name} • ${n.category}\nDaerah: ${n.area ?? "tidak diketahui"}\nLogin terakhir: ${n.last_login ? timeAgo(n.last_login) : "belum pernah"}`,
-          tag: n.id,
+          tag: n.id, // the browser also collapses repeats of the same SOS
         });
       });
     }
-    try {
-      const a = new AudioContext();
-      const o = a.createOscillator();
-      const g = a.createGain();
-      o.connect(g); g.connect(a.destination);
-      o.frequency.value = 880; g.gain.value = 0.05;
-      o.start(); o.stop(a.currentTime + 0.18);
-    } catch { /* audio optional */ }
+    try { playSosChime(); } catch { /* audio optional */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notifs]);
+  }, [notifs, loaded]);
 
   async function askPermission() {
     if (typeof Notification === "undefined") return;
@@ -128,7 +213,9 @@ export default function EmergencyNotifications({
   }
 
   function markAllSeen() {
-    setSeen(new Set(notifs.map((n) => n.id)));
+    const next = new Set([...loadIds(SEEN_KEY), ...notifs.map((n) => n.id)]);
+    saveIds(SEEN_KEY, next);
+    setSeen(next);
   }
 
   return (

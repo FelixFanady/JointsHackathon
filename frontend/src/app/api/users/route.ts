@@ -3,6 +3,7 @@ import { guard } from "@/lib/session";
 import { db } from "@/lib/supabase";
 import { loadAllProfiles } from "@/lib/citizenProfile";
 import { loadAllActivity } from "@/lib/citizenActivity";
+import { inScope, scopeFor } from "@/lib/supportArea";
 
 export const dynamic = "force-dynamic";
 
@@ -27,10 +28,11 @@ export async function GET(req: Request) {
   // ?photos=0 -> skip the (base64, 10-25 KB each) profile photos; the header bell polls without them.
   const withPhotos = new URL(req.url).searchParams.get("photos") !== "0";
 
-  const [{ data: citizens, error }, profiles, activity] = await Promise.all([
+  const [{ data: citizens, error }, profiles, activity, scope] = await Promise.all([
     db().from("citizens").select("nik,full_name,active,created_at").order("full_name", { ascending: true }).limit(2000),
     loadAllProfiles(),
     loadAllActivity(),
+    scopeFor(g.user),
   ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -55,5 +57,6 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ users });
+  // Support officers only see citizens whose area is inside their assigned provinces.
+  return NextResponse.json({ users: scope === null ? users : users.filter((u) => inScope(scope, u.region?.province)) });
 }

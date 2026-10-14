@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guard, USERNAME_RE, emailFor } from "@/lib/session";
 import { db } from "@/lib/supabase";
+import { saveAreas } from "@/lib/supportArea";
 
 export async function POST(req: Request) {
   const g = await guard(["admin"]);
@@ -26,5 +27,7 @@ export async function POST(req: Request) {
     await db().auth.admin.deleteUser(data.user.id);
     return NextResponse.json({ error: "Gagal menyimpan profil." }, { status: 500 });
   }
+  // Assigned provinces chosen in the create form (omitted = whole world, "ALL").
+  if (Array.isArray(b?.areas)) await saveAreas(data.user.id, b.areas);
   return NextResponse.json({ ok: true }, { status: 201 });
 }

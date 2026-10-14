@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/session";
 import { db } from "@/lib/supabase";
+import { cleanAreas, deleteAreas, saveAreas } from "@/lib/supportArea";
 
 type Ctx = { params: Promise<{ id: string }> };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -33,6 +34,18 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const { error } = await db().auth.admin.updateUserById(id, { password: b.password });
     if (error) return NextResponse.json({ error: "Gagal mengganti kata sandi." }, { status: 500 });
   }
+  // Assigned provinces (38 + "ALL"). An empty list = sees no reports until assigned.
+  if (Array.isArray(b?.areas)) {
+    if (b.areas.length > 0 && cleanAreas(b.areas).length === 0) return NextResponse.json({ error: "Wilayah tidak valid." }, { status: 400 });
+    const err = await saveAreas(id, b.areas);
+    if (err) return NextResponse.json({ error: err }, { status: 500 });
+  }
+  // Assigned provinces (38 + "ALL"). An empty list = sees no reports until assigned.
+  if (Array.isArray(b?.areas)) {
+    if (b.areas.length > 0 && cleanAreas(b.areas).length === 0) return NextResponse.json({ error: "Wilayah tidak valid." }, { status: 400 });
+    const err = await saveAreas(id, b.areas);
+    if (err) return NextResponse.json({ error: err }, { status: 500 });
+  }
   if (Object.keys(patch).length) {
     const { error } = await db().from("profiles").update(patch).eq("id", id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -47,5 +60,6 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   if (!(await loadSupport(id))) return NextResponse.json({ error: "Akun support tidak ditemukan." }, { status: 404 });
   const { error } = await db().auth.admin.deleteUser(id);
   if (error) return NextResponse.json({ error: "Gagal menghapus akun." }, { status: 500 });
+  await deleteAreas(id).catch(() => undefined);
   return NextResponse.json({ ok: true });
 }

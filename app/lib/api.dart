@@ -6,6 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'auto_refresh.dart';
+
 /// Backend base URL. Override with: flutter run --dart-define=API_BASE=https://your-domain
 /// Defaults target a Next.js dev server on the host machine (Android emulator uses 10.0.2.2).
 String get apiBase {
@@ -34,9 +36,11 @@ class NearbyItem {
         lat = (j['lat'] as num).toDouble(),
         lng = (j['lng'] as num).toDouble(),
         createdAt = j['created_at'] as String,
+        verifiedBy = j['verified_by'] as String?,
         distanceKm = (j['distance_km'] as num).toDouble();
   final String id, kind, category, status, createdAt;
-  final String? address;
+  /// 'petugas' | 'otomatis' (AI + BMKG) when status is valid.
+  final String? address, verifiedBy;
   final double lat, lng, distanceKm;
 }
 
@@ -48,9 +52,11 @@ class MyReport {
         description = j['description'] as String?,
         address = j['address'] as String?,
         status = j['status'] as String,
+        verifiedBy = j['verified_by'] as String?,
         createdAt = j['created_at'] as String;
   final String id, kind, category, status, createdAt;
-  final String? description, address;
+  /// 'petugas' | 'otomatis' (AI + BMKG) when status is valid.
+  final String? description, address, verifiedBy;
 }
 
 /// A notification sent by Support. level: info | warning | danger.
@@ -60,15 +66,23 @@ class AppNotice {
         title = j['title'] as String,
         message = j['message'] as String,
         level = (j['level'] as String?) ?? 'info',
+        kind = j['kind'] as String?,
         createdAt = j['created_at'] as String;
   final String id, title, message, level, createdAt;
+  /// bencana | kriminal | umum, chosen by Support. Null on notices sent before the web had it.
+  final String? kind;
 }
 
 class Api {
   /// Notifications Support sent to this citizen (plus broadcasts). Pass [since] (ISO) to get only newer ones.
   /// Each call also tells the server this app is receiving notifications.
-  static Future<List<AppNotice>> notices(String nik, {String? since}) async {
-    final j = await _post('/api/mobile/notices', {'nik': nik, if (since != null) 'since': since});
+  static Future<List<AppNotice>> notices(String nik, {String? since, double? lat, double? lng}) async {
+    final j = await _post('/api/mobile/notices', {
+      'nik': nik,
+      if (since != null) 'since': since,
+      // Last known position, so Support can alert citizens near a verified incident.
+      if (lat != null && lng != null) ...{'lat': lat, 'lng': lng},
+    });
     return (j['notices'] as List).map((e) => AppNotice.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -99,8 +113,11 @@ class Api {
   /// Returns the citizen's name for a NIK.
   static Future<String> identify(String nik) async => (await _post('/api/mobile/identify', {'nik': nik}))['name'] as String;
 
-  static Future<void> sendSos({required String nik, required double lat, required double lng, required String category, String? description, String? photoB64, String? address}) =>
-      _post('/api/mobile/sos', {'nik': nik, 'lat': lat, 'lng': lng, 'category': category, 'description': description, 'photo': photoB64, 'address': address});
+  // After a successful send every list/map refreshes at once (see auto_refresh.dart).
+  static Future<void> sendSos({required String nik, required double lat, required double lng, required String category, String? description, String? photoB64, String? address}) async {
+    await _post('/api/mobile/sos', {'nik': nik, 'lat': lat, 'lng': lng, 'category': category, 'description': description, 'photo': photoB64, 'address': address});
+    notifyReportsChanged();
+  }
 
   static Future<void> sendReport({
     required String nik,
@@ -111,11 +128,13 @@ class Api {
     required bool danger,
     String? photoB64,
     String? address,
-  }) =>
-      _post('/api/mobile/report', {
-        'nik': nik, 'lat': lat, 'lng': lng, 'category': category,
-        'description': description, 'danger': danger, 'photo': photoB64, 'address': address,
-      });
+  }) async {
+    await _post('/api/mobile/report', {
+      'nik': nik, 'lat': lat, 'lng': lng, 'category': category,
+      'description': description, 'danger': danger, 'photo': photoB64, 'address': address,
+    });
+    notifyReportsChanged();
+  }
 
   static Future<List<MyReport>> myReports(String nik) async {
     final j = await _post('/api/mobile/my-reports', {'nik': nik});
@@ -206,5 +225,41 @@ Future<(Place?, String?)> currentPlace() async {
     return (Place(p.latitude, p.longitude), null);
   } catch (_) {
     return (null, 'Tidak dapat menentukan lokasi Anda. Coba lagi.');
+  }
+}
+
+final _addressCache = <String, String>{};
+
+/// Street address for a GPS point ("Jl. Merdeka 5, Kebon Melati, Tanah Abang, Jakarta Pusat") from
+/// OpenStreetMap, or null when offline / not found. The coordinates themselves are still what gets sent
+/// as the location; this is only for showing a readable place. One request per spot (cached).
+Future<String?> addressFor(Place p) async {
+  final key = '${p.lat.toStringAsFixed(4)},${p.lng.toStringAsFixed(4)}';
+  final hit = _addressCache[key];
+  if (hit != null) return hit;
+  try {
+    final r = await http.get(
+      Uri.parse('https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=id&lat=${p.lat}&lon=${p.lng}'),
+      headers: {'User-Agent': 'SiagaKu/1.0 (emergency-reporting hackathon project)', 'Accept': 'application/json'},
+    ).timeout(const Duration(seconds: 8));
+    if (r.statusCode != 200) return null;
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    final a = (j['address'] as Map?)?.cast<String, dynamic>() ?? const {};
+    String? s(String k) => (a[k] as String?)?.trim();
+    final road = [s('road'), s('house_number')].whereType<String>().where((v) => v.isNotEmpty).join(' ');
+    final parts = <String?>[
+      road.isEmpty ? (s('amenity') ?? s('building') ?? s('neighbourhood')) : road,
+      s('village') ?? s('suburb') ?? s('quarter'),
+      s('city_district') ?? s('district') ?? s('municipality'),
+      s('city') ?? s('county') ?? s('town') ?? s('regency'),
+    ];
+    final seen = <String>{};
+    final text = parts.whereType<String>().where((v) => v.isNotEmpty && seen.add(v)).join(', ');
+    final out = text.isNotEmpty ? text : (j['display_name'] as String?)?.replaceAll(RegExp(r',\s*Indonesia$'), '');
+    if (out == null || out.isEmpty) return null;
+    _addressCache[key] = out;
+    return out;
+  } catch (_) {
+    return null;
   }
 }

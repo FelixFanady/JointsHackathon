@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../api.dart';
+import '../auto_refresh.dart';
 import '../theme.dart';
 
 class MapScreen extends StatefulWidget {
@@ -11,7 +12,7 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver, AutoRefresh {
   final controller = MapController();
   bool sosMode = true; // Peringatan Darurat vs Laporan Warga
   Place? me;
@@ -25,10 +26,21 @@ class _MapScreenState extends State<MapScreen> {
     _load();
   }
 
+  // Silent refresh (every 20 s while this tab is visible, and right after a new SOS/report):
+  // keeps the map where the user moved it and shows no spinner.
+  @override
+  Future<void> autoRefresh() async {
+    final p = await recentPlace();
+    if (p == null) return;
+    final fresh = await Api.nearby(p.lat, p.lng);
+    if (mounted) setState(() { me = p; items = fresh; error = null; });
+  }
+
   Future<void> _load() async {
     setState(() { loading = true; error = null; });
     final (p, e) = await currentPlace();
     me = p;
+    if (p != null) rememberPlace(p);
     if (p == null) {
       setState(() { loading = false; error = e; });
       return;

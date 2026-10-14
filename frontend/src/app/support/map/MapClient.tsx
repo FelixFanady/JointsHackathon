@@ -6,6 +6,8 @@ import AiInsight from "@/components/AiInsight";
 import { setStatus, useReports } from "@/components/useReports";
 import { clusterPoints, timeAgo } from "@/lib/util";
 import { DEFAULT_SETTINGS, type Report, type Settings } from "@/lib/types";
+import { homeForAreas, type MapHome } from "@/lib/provinces";
+import { categoryShares, colorFor } from "@/lib/categoryColors";
 
 const RANGES = [
   [24, "24 jam"],
@@ -33,6 +35,15 @@ export default function MapClient() {
 
   const { reports, error, reload } = useReports(`hours=${hours}`);
 
+  // Open the map on the officer's assigned area: one province -> it, several -> a random one, ALL -> Indonesia.
+  const [home, setHome] = useState<MapHome | null | undefined>(undefined);
+  useEffect(() => {
+    fetch("/api/me/areas", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setHome(j && Array.isArray(j.areas) ? homeForAreas(j.areas) : null))
+      .catch(() => setHome(null));
+  }, []);
+
   useEffect(() => {
     fetch("/api/settings", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -59,9 +70,16 @@ export default function MapClient() {
   }, [reports, showSos, showReport, settings]);
 
   const mapClusters: MapCluster[] = useMemo(
-    () => full.map((c) => ({ anchorId: c.items[0].id, lat: c.lat, lng: c.lng, count: c.items.length, critical: c.critical, confirmed: c.confirmed })),
+    () =>
+      full.map((c) => ({
+        anchorId: c.items[0].id, lat: c.lat, lng: c.lng, count: c.items.length, critical: c.critical, confirmed: c.confirmed,
+        segments: categoryShares(c.items.map((i) => i.category)).map((s) => ({ color: s.color, share: s.share })),
+      })),
     [full],
   );
+
+  // Legend lists the categories actually on the map right now, with how many reports each.
+  const legendCats = useMemo(() => categoryShares(full.flatMap((c) => c.items.map((i) => i.category))), [full]);
 
   const selected = anchor ? full.find((c) => c.items.some((i) => i.id === anchor)) ?? null : null;
   const pendingIds = selected ? selected.items.filter((i) => i.status === "pending").map((i) => i.id) : [];
@@ -86,7 +104,8 @@ export default function MapClient() {
   return (
     <div className={`map-page ${selected ? "with-panel" : ""}`}>
       <div className="map-canvas">
-        <MapView clusters={mapClusters} threshold={t} selectedAnchor={anchor} onSelect={setAnchor} focus={focus} />
+        <MapView clusters={mapClusters} threshold={t} selectedAnchor={anchor} onSelect={setAnchor} focus={focus} home={home} />
+        {home && <div className="map-area-chip" role="status"><span className="msym xs">home_pin</span>Wilayah: {home.label}</div>}
 
         <div className="map-filters">
           <div className="pnl">
@@ -107,9 +126,18 @@ export default function MapClient() {
 
         <div className="map-legend" aria-label="Legenda">
           <strong>Legenda</strong>
-          <div className="r"><i style={{ background: "#fca5a5" }} />1 laporan</div>
-          <div className="r"><i style={{ background: "#e5383b" }} />Beberapa laporan (makin merah = makin banyak)</div>
-          <div className="r"><i style={{ background: "#991b1b" }} />≥ {t} SOS / terkonfirmasi (kritis)</div>
+          {legendCats.length === 0 ? (
+            <div className="r muted">Belum ada laporan pada filter ini.</div>
+          ) : (
+            legendCats.map((c) => (
+              <div key={c.category} className="r"><i style={{ background: c.color }} />{c.category}<b className="n">{c.count}</b></div>
+            ))
+          )}
+          <div className="sep" />
+          <div className="r"><i className="pie" />Campuran: titik dengan beberapa kategori</div>
+          <div className="r"><i className="big" />Makin besar = makin banyak laporan</div>
+          <div className="r"><i className="crit" />Berdenyut = kritis (≥ {t} SOS / terkonfirmasi)</div>
+          <div className="r"><i className="done" />Tepi hijau = sudah divalidasi</div>
         </div>
       </div>
 
@@ -140,7 +168,7 @@ export default function MapClient() {
             {cats.map(([name, n]) => (
               <div key={name} style={{ marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}><span>{name}</span><b>{n}</b></div>
-                <div className="bar"><i style={{ width: `${(n / selected.items.length) * 100}%`, background: "#e5383b" }} /></div>
+                <div className="bar"><i style={{ width: `${(n / selected.items.length) * 100}%`, background: colorFor(name) }} /></div>
               </div>
             ))}
           </div>
@@ -150,6 +178,9 @@ export default function MapClient() {
             ids={selected.items.map((i) => i.id)}
             initial={selected.items.find((i) => i.ai_verdict)?.ai_verdict ?? null}
             label="Apakah berita ini valid?"
+            running={selected.items.some((i) => i.ai_running)}
+            state={selected.items.some((i) => i.ai_state === "running") ? "running" : selected.items.some((i) => i.ai_state === "queued") ? "queued" : null}
+            onDone={reload}
           />
 
           <div className="items">

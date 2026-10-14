@@ -14,10 +14,12 @@ export async function POST(req: Request) {
   const c = f.citizen;
   const { data, error } = await db()
     .from("reports")
-    .select("id,kind,category,description,address,status,lat,lng,created_at")
+    .select("id,kind,category,description,address,status,lat,lng,created_at,reviewed_by")
     .eq("nik", c.nik)
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) return bad("Gagal memuat laporan.", 500);
-  return NextResponse.json({ reports: data });
+  // verified_by: "petugas" | "otomatis" (AI + BMKG) for valid reports; never the reviewer's id.
+  const reports = (data ?? []).map(({ reviewed_by, ...r }) => ({ ...r, verified_by: r.status === "valid" ? (reviewed_by ? "petugas" : "otomatis") : null }));
+  return NextResponse.json({ reports });
 }

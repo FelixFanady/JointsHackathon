@@ -1,6 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { guard } from "@/lib/session";
 import { db } from "@/lib/supabase";
+import { loadAiRunning } from "@/lib/aiRunning";
+import { loadReportRegions, reportsInScope } from "@/lib/reportRegion";
+import { inScope, scopeFor } from "@/lib/supportArea";
+import { dropJobs, loadQueue, sweepAndKick } from "@/lib/aiQueue";
+import { loadAiReviews, recordAiReview } from "@/lib/aiReview";
 
 const COLS =
   "id,kind,nik,reporter_name,category,description,photo_url,lat,lng,address,status,reviewed_by,reviewed_at,ai_verdict,ai_checked_at,created_at";
@@ -23,9 +28,23 @@ export async function GET(req: Request) {
   if (status === "pending" || status === "valid" || status === "false") q = q.eq("status", status);
   if (kind === "sos" || kind === "report") q = q.eq("kind", kind);
 
-  const { data, error } = await q;
+  const [{ data, error }, running, regions, scope, queue, reviews] = await Promise.all([q, loadAiRunning(), loadReportRegions(), scopeFor(g.user), loadQueue(), loadAiReviews()]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ reports: data });
+  // Safety net: queue recent pending reports that never got an AI check, and keep the worker going.
+  after(() => sweepAndKick(data ?? [], queue, running));
+  // ai_state: "running" (checking now) | "queued" (waiting for a free AI slot) | "failed" (AI gave up) | null.
+  // ai_running stays true for running AND queued, so every screen disables the AI button and polls faster.
+  // region: kelurahan/kecamatan/kota from the street map; region_pending: not looked up yet.
+  return NextResponse.json({
+    // Support officers only see reports inside their assigned provinces (admins and "ALL" see everything).
+    reports: (data ?? []).filter((r) => scope === null || inScope(scope, regions.get(r.id)?.region?.province)).map((r) => {
+      const g = regions.get(r.id);
+      const job = queue.get(r.id);
+      const ai_state = running.has(r.id) ? "running" : job && !job.failed ? "queued" : job?.failed ? "failed" : null;
+      // ai_review: an officer's check of an automatic AI validation (AI right / wrong).
+      return { ...r, ai_running: ai_state === "running" || ai_state === "queued", ai_state, ai_review: reviews.get(r.id) ?? null, region: g?.region ?? null, region_pending: !g };
+    }),
+  });
 }
 
 /** Mark one or many reports as valid / false. Body: { ids: string[], status: "valid" | "false" } */
@@ -44,11 +63,20 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "ID laporan tidak valid." }, { status: 400 });
   }
 
+  if (!(await reportsInScope(await scopeFor(g.user), ids as string[]))) {
+    return NextResponse.json({ error: "Laporan di luar wilayah tugas Anda." }, { status: 403 });
+  }
+
+  // "Valid · Perlu ditinjau" (auto-validated by AI + BMKG): remember whether the officer found the AI right.
+  await recordAiReview(ids as string[], status, g.user.full_name);
+
   const { data, error } = await db()
     .from("reports")
     .update({ status, reviewed_by: g.user.id, reviewed_at: new Date().toISOString() })
     .in("id", ids as string[])
     .select("id");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // The officer decided: cancel any automatic AI check still waiting in the queue for these reports.
+  await dropJobs(ids as string[]);
   return NextResponse.json({ updated: data?.length ?? 0 });
 }

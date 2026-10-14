@@ -40,12 +40,18 @@ export async function recordLogin(nik: string): Promise<void> {
   }
 }
 
-/** App pulled its notification inbox: proves the app is installed and receiving; also counts as activity. */
-export async function recordNoticeFetch(nik: string): Promise<void> {
+
+
+/** App pulled its notification inbox: proves the app is installed and receiving; also counts as activity.
+ *  `pos` (optional) is the phone's current GPS point, so "notify citizens nearby" reaches people who never reported. */
+export async function recordNoticeFetch(nik: string, pos?: { lat: number; lng: number } | null): Promise<void> {
   try {
     const current = await loadActivity(nik);
     const now = new Date().toISOString();
-    await put(nik, { ...current, last_login: now, notices_fetched_at: now }, now);
+    const loc = pos ? { last_lat: pos.lat, last_lng: pos.lng, last_seen_at: now } : {};
+    await put(nik, { ...current, ...loc, last_login: now, notices_fetched_at: now }, now);
+    // Street-map lookup only re-runs when the user moved > ~1 km (checked inside).
+    if (pos) await resolveActivityRegion(nik);
   } catch {
     /* non-fatal */
   }

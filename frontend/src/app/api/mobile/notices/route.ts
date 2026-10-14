@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { bad, requireCitizen, rateLimit } from "@/lib/mobile";
+import { bad, coords, requireCitizen, rateLimit } from "@/lib/mobile";
 import { noticesFor } from "@/lib/citizenNotice";
 import { recordNoticeFetch } from "@/lib/citizenActivity";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
  * Inbox for the mobile app: notifications Support sent to this citizen (plus broadcasts).
  * POST so the NIK stays out of URLs/logs (same as my-reports). The app polls this; each
  * call also stamps `notices_fetched_at` so Support can see the app is receiving.
- * Body: { nik, since?: ISO } -> { notices: [{ id, title, message, level, created_at, by }] }
+ * Body: { nik, since?: ISO } -> { notices: [{ id, title, message, level, kind?, created_at, by }] }
  */
 export async function POST(req: Request) {
   const rl = rateLimit(req, "notices", 40);
@@ -26,9 +26,10 @@ export async function POST(req: Request) {
     title: n.title,
     message: n.message,
     level: n.level,
+    ...(n.kind ? { kind: n.kind } : {}), // absent on old notices: the app then guesses from the words
     created_at: n.created_at,
     by: n.by,
   }));
-  void recordNoticeFetch(c.nik);
+  void recordNoticeFetch(c.nik, b?.lat != null && b?.lng != null ? coords(b) : null);
   return NextResponse.json({ notices });
 }

@@ -2,19 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import Modal from "@/components/Modal";
+import { useRouter } from "next/navigation";
 import { useUsers, type DirectoryUser } from "@/components/useUsers";
 import { formatDateTime, timeAgo } from "@/lib/util";
+import Pager, { usePaged } from "@/components/Pager";
 
-type Level = "info" | "warning" | "danger";
-type Mode = "all" | "region" | "picked";
-type SentNotice = { id: string; to: string; to_name: string | null; title: string; message: string; level: Level; created_at: string; by: string };
-
-const LEVELS: [Level, string, string][] = [
-  ["info", "Info", "info"],
-  ["warning", "Peringatan", "warning"],
-  ["danger", "Darurat", "emergency_home"],
-];
 const FILTERS = [
   ["all", "Semua"],
   ["online", "Aktif 15 mnt"],
@@ -34,6 +26,7 @@ function tally(values: (string | null | undefined)[]): [string, number][] {
 }
 
 export default function UsersClient() {
+  const router = useRouter();
   const { users, loading, error, reload } = useUsers(15000);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number][0]>("all");
@@ -41,26 +34,8 @@ export default function UsersClient() {
   const [regionDistrict, setRegionDistrict] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
-  // compose modal
-  const [compose, setCompose] = useState(false);
-  const [mode, setMode] = useState<Mode>("all");
-  const [sendCity, setSendCity] = useState("");
-  const [sendDistrict, setSendDistrict] = useState("");
-  const [title, setTitle] = useState("");
-  const [message, setMessage] = useState("");
-  const [level, setLevel] = useState<Level>("info");
-  const [busy, setBusy] = useState(false);
-  const [formErr, setFormErr] = useState("");
-  const [toast, setToast] = useState("");
-  const [sent, setSent] = useState<SentNotice[]>([]);
+  const [toast] = useState("");
   const [syncing, setSyncing] = useState(false);
-
-  const loadSent = () =>
-    fetch("/api/notices", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => j && setSent(j.notices ?? []))
-      .catch(() => {});
-  useEffect(() => { loadSent(); }, []);
 
   // Ask the server to resolve districts/cities from the street map (OpenStreetMap) for users
   // that don't have one yet. It does a few per call (service allows ~1 req/s), so loop until done.
@@ -104,6 +79,8 @@ export default function UsersClient() {
       .sort((a, b) => (+new Date(b.last_login ?? 0)) - (+new Date(a.last_login ?? 0)));
   }, [users, q, filter, regionCity, regionDistrict]);
 
+  const paged = usePaged(rows, [q, filter, regionCity, regionDistrict]);
+
   const onlineCount = users.filter((u) => recent(u.last_login, ONLINE_MS)).length;
   const appCount = users.filter((u) => u.notices_fetched_at).length;
   const allPicked = rows.length > 0 && rows.every((u) => picked.has(u.nik));
@@ -118,46 +95,19 @@ export default function UsersClient() {
       return n;
     });
   }
-  function flash(m: string) { setToast(m); window.setTimeout(() => setToast(""), 3200); }
-
-  // ----- recipients for the compose modal -----
-  const active = users.filter((u) => u.active);
-  const regionRecipients = active.filter((u) => u.region?.city === sendCity && (!sendDistrict || u.region?.district === sendDistrict));
-  const pickedRecipients = active.filter((u) => picked.has(u.nik));
-  const recipients: DirectoryUser[] = mode === "all" ? active : mode === "region" ? regionRecipients : pickedRecipients;
-
-  function openCompose(m: Mode, opts?: { picked?: string[]; city?: string; district?: string }) {
-    setFormErr("");
-    if (opts?.picked) setPicked(new Set(opts.picked));
-    setMode(m);
-    const city = opts?.city ?? (regionCity && regionCity !== "__none" ? regionCity : cities[0]?.[0] ?? "");
-    setSendCity(city);
-    setSendDistrict(opts?.district ?? (regionCity === city ? regionDistrict : ""));
-    setCompose(true);
-  }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (recipients.length === 0) return setFormErr("Tidak ada penerima pada pilihan ini.");
-    setBusy(true);
-    setFormErr("");
-    const res = await fetch("/api/notices", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targets: mode === "all" ? "all" : recipients.map((u) => u.nik), title, message, level }),
-    });
-    const j = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!res.ok) return setFormErr(j.error ?? "Gagal mengirim notifikasi.");
-    flash(mode === "all" ? "Notifikasi dikirim ke semua pengguna." : `Notifikasi dikirim ke ${j.sent} pengguna.`);
-    setCompose(false);
-    setTitle(""); setMessage(""); setLevel("info");
-    setPicked(new Set());
-    loadSent();
-  }
-
   const names = (nik: string) => users.find((u) => u.nik === nik)?.full_name ?? nik;
-  const modeLabel = (m: Mode) => (m === "all" ? "Semua" : m === "region" ? "Per daerah" : `Dipilih (${picked.size})`);
+  void names;
+
+  // Sending now lives on its own page (Notifikasi › Buat Notifikasi); these open it pre-filled.
+  function openCompose(m: "all" | "region" | "picked", opts?: { picked?: string[] }) {
+    const p = new URLSearchParams();
+    if (m === "picked") p.set("to", (opts?.picked ?? [...picked]).join(","));
+    if (m === "region" && regionCity && regionCity !== "__none") {
+      p.set("city", regionCity);
+      if (regionDistrict) p.set("district", regionDistrict);
+    }
+    router.push(`/support/notifications/new${p.size ? `?${p}` : ""}`);
+  }
 
   return (
     <>
@@ -227,7 +177,7 @@ export default function UsersClient() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((u: DirectoryUser) => {
+                {paged.slice.map((u: DirectoryUser) => {
                   const on = recent(u.last_login, ONLINE_MS);
                   return (
                     <tr key={u.nik}>
@@ -284,91 +234,9 @@ export default function UsersClient() {
             </table>
           )}
         </div>
+        <Pager {...paged} label="pengguna" />
       </div>
 
-      {sent.length > 0 && (
-        <div className="card sent-card">
-          <h2>Notifikasi terkirim</h2>
-          <div className="sent-list">
-            {sent.slice(0, 8).map((n) => (
-              <div key={n.id} className={`sent-item ${n.level}`}>
-                <div className="top"><strong>{n.title}</strong><small>{timeAgo(n.created_at)}</small></div>
-                <p>{n.message}</p>
-                <small className="muted">Ke: {n.to === "all" ? "Semua pengguna" : n.to_name ?? names(n.to)} · oleh {n.by}</small>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {compose && (
-        <Modal title="Kirim notifikasi" sub="Muncul di HP warga dengan bunyi dan getar seperti alarm." onClose={() => setCompose(false)}>
-          <form onSubmit={submit}>
-            <div className="field">
-              <label>Kirim ke</label>
-              <div className="tabs" role="tablist" aria-label="Penerima">
-                {(["all", "region", "picked"] as Mode[]).map((m) => (
-                  <button type="button" key={m} role="tab" aria-selected={mode === m} className={mode === m ? "on" : ""} disabled={m === "picked" && picked.size === 0} onClick={() => setMode(m)}>
-                    {modeLabel(m)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {mode === "region" && (
-              <div className="field">
-                {cities.length === 0 ? (
-                  <span className="hint">Belum ada pengguna dengan daerah yang dikenali di peta.</span>
-                ) : (
-                  <div className="region-pick">
-                    <select className="input" value={sendCity} onChange={(e) => { setSendCity(e.target.value); setSendDistrict(""); }} aria-label="Kota atau kabupaten">
-                      {cities.map(([c, n]) => <option key={c} value={c}>{c} ({n})</option>)}
-                    </select>
-                    <select className="input" value={sendDistrict} onChange={(e) => setSendDistrict(e.target.value)} aria-label="Kecamatan">
-                      <option value="">Semua kecamatan</option>
-                      {districtsOf(sendCity).map(([d, n]) => <option key={d} value={d}>{d} ({n})</option>)}
-                    </select>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="recipients" aria-live="polite">
-              <span className="msym sm">group</span>
-              <b>{recipients.length}</b> penerima
-              {mode !== "all" && recipients.length > 0 && (
-                <small className="muted"> · {recipients.slice(0, 3).map((u) => u.full_name).join(", ")}{recipients.length > 3 ? ` +${recipients.length - 3}` : ""}</small>
-              )}
-            </div>
-
-            <div className="field">
-              <label>Tingkat</label>
-              <div className="tabs" role="tablist" aria-label="Tingkat">
-                {LEVELS.map(([k, label, icon]) => (
-                  <button type="button" key={k} role="tab" aria-selected={level === k} className={level === k ? "on" : ""} onClick={() => setLevel(k)}>
-                    <span className="msym sm">{icon}</span>{label}
-                  </button>
-                ))}
-              </div>
-              {level !== "info" && <span className="hint">Peringatan/Darurat berbunyi dan bergetar berulang sampai warga membukanya (maks. 1 menit).</span>}
-            </div>
-            <div className="field">
-              <label htmlFor="nt">Judul</label>
-              <input id="nt" className="input" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder="Contoh: Waspada banjir di wilayah Anda" required autoFocus />
-            </div>
-            <div className="field">
-              <label htmlFor="nm">Pesan</label>
-              <textarea id="nm" className="input" rows={4} value={message} onChange={(e) => setMessage(e.target.value)} maxLength={500} placeholder="Isi pemberitahuan untuk warga…" required />
-              <span className="hint">{message.length}/500</span>
-            </div>
-            {formErr && <div className="alert error">{formErr}</div>}
-            <div className="actions">
-              <button type="button" className="btn ghost" onClick={() => setCompose(false)}>Batal</button>
-              <button type="submit" className="btn primary" disabled={busy || recipients.length === 0}><span className="msym sm">send</span>{busy ? "Mengirim…" : `Kirim ke ${recipients.length}`}</button>
-            </div>
-          </form>
-        </Modal>
-      )}
       {toast && <div className="toast" role="status">{toast}</div>}
     </>
   );

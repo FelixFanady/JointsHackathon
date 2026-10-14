@@ -10,13 +10,19 @@ import 'theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.dark));
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // Fire-and-forget: orientation lock must not block first frame.
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // Load the saved session before building UI (fast, local read).
   await session.load();
-  // Support notifications: poll while signed in, show as alarm-style system notifications.
-  await Notifier.init();
-  session.addListener(Notifier.sync);
-  Notifier.sync();
+  // Show UI immediately so the device never sits on a black screen.
   runApp(const SiagaKuApp());
+  // Support notifications: set up AFTER the first frame so plugin init / permission
+  // prompts / polling can never block startup rendering.
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    await Notifier.init();
+    session.addListener(Notifier.sync);
+    Notifier.sync();
+  });
 }
 
 class SiagaKuApp extends StatelessWidget {

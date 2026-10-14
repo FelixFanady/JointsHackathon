@@ -1,3 +1,4 @@
+import PerformanceTable from "./PerformanceTable";
 import Link from "next/link";
 import { db } from "@/lib/supabase";
 
@@ -67,22 +68,14 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
           {rows.length === 0 ? (
             <div className="empty"><span className="msym">support_agent</span>Belum ada akun support.</div>
           ) : (
-            <table className="table">
-              <thead><tr><th>#</th><th>Personel</th><th style={{ minWidth: 180 }}>Ditangani</th><th className="num">Valid</th><th className="num">Palsu</th><th className="num">Rata-rata respons</th><th>Status</th></tr></thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr key={r.id}>
-                    <td>{i + 1}</td>
-                    <td><div className="person"><span className="av">{r.full_name.split(" ").map((w: string) => w[0]).slice(0, 2).join("").toUpperCase()}</span><div>{r.full_name}<small>{r.unit ?? r.username}</small></div></div></td>
-                    <td><div style={{ display: "flex", gap: 10, alignItems: "center" }}><b style={{ minWidth: 32 }}>{r.handled}</b><div className="bar" style={{ flex: 1 }}><i style={{ width: `${(r.handled / max) * 100}%` }} /></div></div></td>
-                    <td className="num" style={{ color: "#16a34a", fontWeight: 600 }}>{r.valid}</td>
-                    <td className="num" style={{ color: "#e5383b", fontWeight: 600 }}>{r.fake}</td>
-                    <td className="num">{r.avgMin === null ? "-" : fmtMin(r.avgMin)}</td>
-                    <td><span className={`badge ${r.active ? "valid" : "off"}`}>{r.active ? "Aktif" : "Nonaktif"}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <PerformanceTable
+              max={max}
+              rows={rows.map((r) => ({
+                id: r.id, full_name: r.full_name, unit: r.unit ?? null, username: r.username,
+                handled: r.handled, valid: r.valid, fake: r.fake, active: r.active,
+                avgLabel: r.avgMin === null ? "-" : fmtMin(r.avgMin),
+              }))}
+            />
           )}
         </div>
       </div>

@@ -1,11 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import RouteSkeleton from "@/components/RouteSkeleton";
 
 // Leaflet touches `window`, so the map must never render on the server.
 const MapClient = dynamic(() => import("./MapClient"), {
   ssr: false,
-  loading: () => <div className="empty" style={{ margin: "auto" }}>Memuat peta…</div>,
+  loading: () => <RouteSkeleton variant="map" />,
 });
 
 export default function MapLoader() {

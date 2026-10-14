@@ -37,6 +37,11 @@ export type Report = {
   ai_verdict: AiVerdict | null;
   ai_checked_at: string | null;
   created_at: string;
+  ai_running?: boolean; // an AI check is running or queued right now (from /api/reports)
+  ai_state?: "running" | "queued" | "failed" | null;
+  ai_review?: { ok: boolean; by: string; at: string } | null; // officer's check of an automatic AI validation
+  region?: { province: string | null; city: string | null; district: string | null; village: string | null; label: string } | null;
+  region_pending?: boolean; // address/area not looked up yet
 };
 
 export type Citizen = {

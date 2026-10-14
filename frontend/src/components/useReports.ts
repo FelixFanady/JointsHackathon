@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Report } from "@/lib/types";
 
-/** Polls /api/reports. `query` must be a stable string like "hours=24". */
+/** Polls /api/reports. `query` must be a stable string like "hours=24".
+ *  While any report has an AI check running, it polls every 3 s so the result appears without a refresh. */
 export function useReports(query: string, intervalMs = 15000) {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const alive = useRef(true);
+  const aiRunning = reports.some((r) => r.ai_running);
+  const every = aiRunning ? Math.min(3000, intervalMs) : intervalMs;
 
   const load = useCallback(async () => {
     try {
@@ -28,9 +31,14 @@ export function useReports(query: string, intervalMs = 15000) {
   useEffect(() => {
     alive.current = true;
     load();
-    const t = setInterval(load, intervalMs);
-    return () => { alive.current = false; clearInterval(t); };
-  }, [load, intervalMs]);
+    return () => { alive.current = false; };
+  }, [load]);
+
+  // Separate from the first load so switching between fast/normal polling does not refetch immediately.
+  useEffect(() => {
+    const t = setInterval(load, every);
+    return () => clearInterval(t);
+  }, [load, every]);
 
   return { reports, loading, error, reload: load };
 }

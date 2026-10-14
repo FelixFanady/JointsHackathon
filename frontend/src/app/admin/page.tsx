@@ -1,5 +1,5 @@
 import { db } from "@/lib/supabase";
-import { KIND_LABEL, STATUS_LABEL, timeAgo } from "@/lib/util";
+import { KIND_LABEL, VIEW_STATUS_LABEL, timeAgo, viewStatus } from "@/lib/util";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,7 @@ export default async function AdminHome() {
     count("profiles", (q) => q.eq("role", "support").eq("active", true)),
     db()
       .from("reports")
-      .select("id,kind,category,reporter_name,status,created_at")
+      .select("id,kind,category,reporter_name,status,reviewed_by,created_at")
       .order("created_at", { ascending: false })
       .limit(8),
   ]);
@@ -57,7 +57,7 @@ export default async function AdminHome() {
                     <td><span className={`badge ${r.kind}`}>{KIND_LABEL[r.kind as "sos" | "report"]}</span></td>
                     <td>{r.category}</td>
                     <td>{r.reporter_name}</td>
-                    <td><span className={`badge ${r.status}`}>{STATUS_LABEL[r.status as "pending" | "valid" | "false"]}</span></td>
+                    <td><span className={`badge ${viewStatus(r)}`}>{VIEW_STATUS_LABEL[viewStatus(r)]}</span></td>
                     <td>{timeAgo(r.created_at)}</td>
                   </tr>
                 ))}

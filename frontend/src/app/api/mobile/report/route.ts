@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { db } from "@/lib/supabase";
 import { bad, coords, cleanText, maskPii, rateLimit, requireCitizen, storePhoto } from "@/lib/mobile";
 import { recordLogin, recordLocation } from "@/lib/citizenActivity";
+import { enqueue, kickQueue } from "@/lib/aiQueue";
+import { resolveReportRegion } from "@/lib/reportRegion";
 
 export const dynamic = "force-dynamic";
 
@@ -41,5 +43,10 @@ export async function POST(req: Request) {
   if (error) return bad("Gagal mengirim laporan. Coba lagi.", 500);
   void recordLogin(c.nik);
   void recordLocation(c.nik, pos.lat, pos.lng);
+  // AI + BMKG check in the background (after the response is sent): auto-alert only if both confirm.
+  // Goes through the AI queue, so a busy AI retries later instead of skipping the check.
+  after(async () => { await enqueue(data.id, "triage"); await kickQueue(); });
+  // Street address + kecamatan/kota for the console (groups reports by area). Background, best-effort.
+  after(() => resolveReportRegion({ id: data.id, lat: pos.lat, lng: pos.lng, address: cleanText(b?.address, 200) || null }));
   return NextResponse.json({ id: data.id });
 }

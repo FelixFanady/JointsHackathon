@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { db } from "@/lib/supabase";
-import { bad, coords, cleanText, rateLimit, requireCitizen, storePhoto } from "@/lib/mobile";
+import { bad, coords, cleanText, maskPii, rateLimit, requireCitizen, storePhoto } from "@/lib/mobile";
 import { recordLogin, recordLocation } from "@/lib/citizenActivity";
+import { enqueue, kickQueue } from "@/lib/aiQueue";
+import { resolveReportRegion } from "@/lib/reportRegion";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +19,8 @@ export async function POST(req: Request) {
   const pos = coords(b);
   if (!pos) return bad("Lokasi tidak valid.");
   const category = SOS_CATEGORIES.includes(b?.category) ? b.category : "Darurat";
+  // "Bencana Lainnya": the citizen types what happened (app limits it to 60 chars).
+  const description = category === "Bencana Lainnya" ? maskPii(cleanText(b?.description, 60)) || null : null;
 
   // One person = one SOS per 10 minutes, so a single user cannot inflate the "15 people" counter.
   const since = new Date(Date.now() - 10 * 60_000).toISOString();
@@ -33,6 +37,7 @@ export async function POST(req: Request) {
       nik: c.nik,
       reporter_name: c.full_name,
       category,
+      description,
       photo_url: photo,
       lat: pos.lat,
       lng: pos.lng,
@@ -45,5 +50,10 @@ export async function POST(req: Request) {
   // notify by recency and show each user's area. Best-effort, never blocks.
   void recordLogin(c.nik);
   void recordLocation(c.nik, pos.lat, pos.lng);
+  // AI + BMKG check in the background (after the response is sent): auto-alert only if both confirm.
+  // Goes through the AI queue, so a busy AI retries later instead of skipping the check.
+  after(async () => { await enqueue(data.id, "triage"); await kickQueue(); });
+  // Street address + kecamatan/kota for the console (groups reports by area). Background, best-effort.
+  after(() => resolveReportRegion({ id: data.id, lat: pos.lat, lng: pos.lng, address: cleanText(b?.address, 200) || null }));
   return NextResponse.json({ id: data.id });
 }

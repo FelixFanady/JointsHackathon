@@ -3,6 +3,7 @@ import Sidebar from "@/components/Sidebar";
 import SupportTabs from "@/components/SupportTabs";
 import { getCurrentUser } from "@/lib/session";
 import { sidebarForSupport } from "@/lib/nav";
+import { NavPendingProvider, PendingArea } from "@/components/NavPending";
 
 export default async function SupportLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -13,12 +14,14 @@ export default async function SupportLayout({ children }: { children: React.Reac
   const { title, items } = sidebarForSupport(user.role);
 
   return (
-    <div className="shell">
-      <Sidebar title={title} items={items} user={user} />
-      <main className="main support-main">
-        <SupportTabs />
-        <div className="support-body">{children}</div>
-      </main>
-    </div>
+    <NavPendingProvider>
+      <div className="shell">
+        <Sidebar title={title} items={items} user={user} />
+        <main className="main support-main">
+          <SupportTabs />
+          <div className="support-body"><PendingArea>{children}</PendingArea></div>
+        </main>
+      </div>
+    </NavPendingProvider>
   );
 }

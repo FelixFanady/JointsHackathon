@@ -12,7 +12,7 @@ Future<void> showReportDetail(BuildContext context, MyReport r) => _open(
       context,
       ReportDetailSheet(
         id: r.id, kind: r.kind, category: r.category, status: r.status, createdAt: r.createdAt,
-        description: r.description, address: r.address, own: true,
+        description: r.description, address: r.address, own: true, verifiedBy: r.verifiedBy,
       ),
     );
 
@@ -21,7 +21,7 @@ Future<void> showNearbyDetail(BuildContext context, NearbyItem i) => _open(
       context,
       ReportDetailSheet(
         id: i.id, kind: i.kind, category: i.category, status: i.status, createdAt: i.createdAt,
-        address: i.address, own: false, distanceKm: i.distanceKm, lat: i.lat, lng: i.lng,
+        address: i.address, own: false, distanceKm: i.distanceKm, lat: i.lat, lng: i.lng, verifiedBy: i.verifiedBy,
       ),
     );
 
@@ -51,9 +51,10 @@ class ReportDetailSheet extends StatefulWidget {
     this.distanceKm,
     this.lat,
     this.lng,
+    this.verifiedBy,
   });
   final String id, kind, category, status, createdAt;
-  final String? description, address;
+  final String? description, address, verifiedBy;
   final bool own; // true = the citizen's own report
   final double? distanceKm, lat, lng;
   @override
@@ -207,6 +208,11 @@ class _ReportDetailSheetState extends State<ReportDetailSheet> {
     // Only steps the system actually records: the database knows "received" and the officer's verdict,
     // not whether a team is on site, so no "Ditindaklanjuti" claim is made here.
     final steps = switch (r.status) {
+      // Verified automatically (AI + BMKG, no officer involved): say so, never claim an officer did it.
+      'valid' when r.verifiedBy == 'otomatis' => const [
+          _Step('Laporan Diterima', 'Masuk ke pusat komando SiagaKu', _S.done),
+          _Step('Diverifikasi Otomatis', 'Dikonfirmasi AI dan data gempa BMKG, sedang ditinjau petugas', _S.done),
+        ],
       'valid' => const [
           _Step('Laporan Diterima', 'Masuk ke pusat komando SiagaKu', _S.done),
           _Step('Diverifikasi Petugas', 'Petugas menyatakan kejadian ini benar terjadi', _S.done),

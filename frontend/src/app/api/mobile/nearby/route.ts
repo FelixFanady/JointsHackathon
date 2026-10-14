@@ -19,7 +19,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await db()
     .from("reports")
-    .select("id,kind,category,description,address,status,lat,lng,created_at")
+    .select("id,kind,category,description,address,status,lat,lng,created_at,reviewed_by")
     .neq("status", "false")
     .gte("created_at", since)
     .gte("lat", pos.lat - dLat).lte("lat", pos.lat + dLat)
@@ -41,6 +41,7 @@ export async function GET(req: Request) {
         title: r.category,
         address: r.address,
         status: r.status,
+        verified_by: r.status === "valid" ? (r.reviewed_by ? "petugas" : "otomatis") : null,
         lat: Math.round(r.lat * 1000) / 1000,
         lng: Math.round(r.lng * 1000) / 1000,
         created_at: r.created_at,
