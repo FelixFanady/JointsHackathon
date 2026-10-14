@@ -21,6 +21,15 @@ export default function MapClient() {
   const [anchor, setAnchor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [focus, setFocus] = useState<{ lat: number; lng: number; at: number } | null>(null);
+
+  // Header bell / user directory navigate here with ?focus=lat,lng
+  useEffect(() => {
+    const f = new URLSearchParams(window.location.search).get("focus");
+    if (!f) return;
+    const [lat, lng] = f.split(",").map(Number);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) setFocus({ lat, lng, at: Date.now() });
+  }, []);
 
   const { reports, error, reload } = useReports(`hours=${hours}`);
 
@@ -77,7 +86,7 @@ export default function MapClient() {
   return (
     <div className={`map-page ${selected ? "with-panel" : ""}`}>
       <div className="map-canvas">
-        <MapView clusters={mapClusters} threshold={t} selectedAnchor={anchor} onSelect={setAnchor} />
+        <MapView clusters={mapClusters} threshold={t} selectedAnchor={anchor} onSelect={setAnchor} focus={focus} />
 
         <div className="map-filters">
           <div className="pnl">

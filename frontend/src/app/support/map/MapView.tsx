@@ -39,11 +39,13 @@ export default function MapView({
   threshold,
   selectedAnchor,
   onSelect,
+  focus,
 }: {
   clusters: MapCluster[];
   threshold: number;
   selectedAnchor: string | null;
   onSelect: (anchorId: string | null) => void;
+  focus?: { lat: number; lng: number; at: number } | null;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -92,6 +94,13 @@ export default function MapView({
       fitted.current = true;
     }
   }, [clusters, threshold, selectedAnchor]);
+
+  // Recenter when a focus target is requested (e.g. "Lihat di peta" / notif).
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !focus) return;
+    m.flyTo([focus.lat, focus.lng], Math.max(m.getZoom(), 15), { duration: 0.6 });
+  }, [focus]);
 
   return <div ref={el} style={{ width: "100%", height: "100%" }} role="application" aria-label="Peta sebaran laporan" />;
 }

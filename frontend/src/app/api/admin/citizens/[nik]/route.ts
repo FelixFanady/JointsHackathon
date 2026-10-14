@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/session";
 import { db } from "@/lib/supabase";
-import { deleteProfile, saveProfile, type CitizenProfile } from "@/lib/citizenProfile";
+import { deleteProfile, resolveProfileGeo, savePinGeo, saveProfile, type CitizenProfile } from "@/lib/citizenProfile";
+import { deleteActivity } from "@/lib/citizenActivity";
 
 type Ctx = { params: Promise<{ nik: string }> };
 
@@ -71,6 +72,14 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (hasProfile) {
     const err = await saveProfile(nik, profile);
     if (err) return NextResponse.json({ error: err }, { status: 500 });
+    // Address changed -> work out its district/city on the street map (best-effort, after responding).
+    // A map pin from the picker is exact; otherwise the text is geocoded.
+    if ("address" in profile) {
+      const lat = Number(b?.pin?.lat);
+      const lng = Number(b?.pin?.lng);
+      const pinned = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !!profile.address;
+      void (pinned ? savePinGeo(nik, { lat, lng }, profile.address as string) : resolveProfileGeo(nik)).catch(() => {});
+    }
   }
   return NextResponse.json({ ok: true });
 }
@@ -83,5 +92,6 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   const { error } = await db().from("citizens").delete().eq("nik", nik);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   await deleteProfile(nik); // best-effort cleanup of the profile row
+  await deleteActivity(nik); // and the activity row
   return NextResponse.json({ ok: true });
 }

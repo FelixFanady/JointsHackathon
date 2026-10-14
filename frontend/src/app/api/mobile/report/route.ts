@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/supabase";
-import { bad, coords, cleanText, findCitizen, maskPii, rateLimit, storePhoto } from "@/lib/mobile";
+import { bad, coords, cleanText, maskPii, rateLimit, requireCitizen, storePhoto } from "@/lib/mobile";
+import { recordLogin, recordLocation } from "@/lib/citizenActivity";
 
 export const dynamic = "force-dynamic";
 
@@ -8,8 +9,9 @@ export async function POST(req: Request) {
   const rl = rateLimit(req, "report", 6);
   if (rl) return rl;
   const b = await req.json().catch(() => null);
-  const c = await findCitizen(b?.nik);
-  if (!c) return bad("NIK tidak terdaftar.", 404);
+  const f = await requireCitizen(b?.nik);
+  if (f.error) return f.error;
+  const c = f.citizen;
   const pos = coords(b);
   if (!pos) return bad("Lokasi tidak valid.");
   const category = cleanText(b?.category, 60);
@@ -37,5 +39,7 @@ export async function POST(req: Request) {
     .select("id")
     .single();
   if (error) return bad("Gagal mengirim laporan. Coba lagi.", 500);
+  void recordLogin(c.nik);
+  void recordLocation(c.nik, pos.lat, pos.lng);
   return NextResponse.json({ id: data.id });
 }

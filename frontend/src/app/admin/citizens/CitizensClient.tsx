@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "@/components/Modal";
+import AddressPicker from "@/components/AddressPicker";
 import { formatDateTime, maskNik } from "@/lib/util";
 import { compressImage, dataUriKb } from "@/lib/image";
 import type { Citizen } from "@/lib/types";
@@ -51,6 +52,8 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
   const [editing, setEditing] = useState<Citizen | null>(null);
   const [viewing, setViewing] = useState<Citizen | null>(null);
   const [form, setForm] = useState<ProfileForm | null>(null);
+  // Exact map point chosen with "Pilih di peta" (sent along so the region is stored precisely).
+  const [pin, setPin] = useState<{ lat: number; lng: number } | null>(null);
   const [nik, setNik] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -103,6 +106,7 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
 
   function openEdit(c: Citizen) {
     setError("");
+    setPin(null);
     setEditing(c);
     setForm(toForm(c));
   }
@@ -136,6 +140,7 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
       birth_date: form.birth_date,
       address: form.address,
       photo: form.photo,
+      ...(pin ? { pin } : {}),
     });
     setBusy(false);
     if (err) return setError(err);
@@ -156,13 +161,28 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
     router.refresh();
   }
 
+  // Optimistic on/off state so the switch animates instantly; the server value takes over after refresh.
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const [rowFlash, setRowFlash] = useState<Record<string, "on" | "off">>({});
+  const isActive = (c: Citizen) => flags[c.nik] ?? c.active;
+
   async function toggle(c: Citizen) {
-    const err = await call(`/api/admin/citizens/${c.nik}`, "PATCH", { active: !c.active });
-    if (err) alert(err);
-    else {
-      flash(c.active ? "Dinonaktifkan." : "Diaktifkan.");
-      router.refresh();
+    if (pending.has(c.nik)) return;
+    const next = !isActive(c);
+    setFlags((f) => ({ ...f, [c.nik]: next }));
+    setPending((p) => new Set(p).add(c.nik));
+    const err = await call(`/api/admin/citizens/${c.nik}`, "PATCH", { active: next });
+    setPending((p) => { const n = new Set(p); n.delete(c.nik); return n; });
+    if (err) {
+      setFlags((f) => ({ ...f, [c.nik]: !next })); // roll back the switch
+      flash(err);
+      return;
     }
+    setRowFlash((r) => ({ ...r, [c.nik]: next ? "on" : "off" }));
+    window.setTimeout(() => setRowFlash((r) => { const n = { ...r }; delete n[c.nik]; return n; }), 1100);
+    flash(next ? `${c.full_name} diaktifkan — bisa login ke app.` : `${c.full_name} dinonaktifkan — tidak bisa login ke app.`);
+    router.refresh();
   }
 
   return (
@@ -206,8 +226,10 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((c) => (
-                  <tr key={c.nik}>
+                {rows.map((c) => {
+                  const on = isActive(c);
+                  return (
+                  <tr key={c.nik} className={`${on ? "" : "row-off"} ${rowFlash[c.nik] ? `flash-${rowFlash[c.nik]}` : ""}`}>
                     <td>
                       <div className="person">
                         {c.photo ? (
@@ -235,20 +257,25 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
                     <td>{c.birth_date ? <span className="nowrap">{formatBirth(c.birth_date)}</span> : <span className="muted">—</span>}</td>
                     <td>{c.address ? <span className="addr" title={c.address}>{c.address}</span> : <span className="muted">—</span>}</td>
                     <td>
-                      <span className={`badge ${c.active ? "valid" : "off"}`}>{c.active ? "Aktif" : "Nonaktif"}</span>
+                      <div className="status-cell">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={on}
+                          aria-label={`${on ? "Nonaktifkan" : "Aktifkan"} ${c.full_name}`}
+                          title={on ? "Klik untuk menonaktifkan" : "Klik untuk mengaktifkan"}
+                          className={`switch${on ? " on" : ""}${pending.has(c.nik) ? " busy" : ""}`}
+                          onClick={() => toggle(c)}
+                        >
+                          <span className="knob" />
+                        </button>
+                        <span className={`badge ${on ? "valid" : "off"}`}>{on ? "Aktif" : "Nonaktif"}</span>
+                      </div>
                     </td>
                     <td>{formatDateTime(c.created_at)}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                       <button className="icon-btn" title="Edit profil" aria-label={`Edit profil ${c.full_name}`} onClick={() => openEdit(c)}>
                         <span className="msym sm">edit</span>
-                      </button>
-                      <button
-                        className="icon-btn"
-                        title={c.active ? "Nonaktifkan" : "Aktifkan"}
-                        aria-label={c.active ? "Nonaktifkan" : "Aktifkan"}
-                        onClick={() => toggle(c)}
-                      >
-                        <span className="msym sm">{c.active ? "toggle_on" : "toggle_off"}</span>
                       </button>
                       <button
                         className="icon-btn danger"
@@ -263,7 +290,8 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -359,6 +387,11 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
             <div className="field">
               <label htmlFor="pf-addr">Alamat rumah</label>
               <textarea id="pf-addr" className="input" rows={3} maxLength={400} placeholder="Jalan, RT/RW, kelurahan, kota…" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+              <AddressPicker
+                initialPin={pin}
+                onPin={setPin}
+                onAddress={(address) => setForm((f) => (f ? { ...f, address: address.slice(0, 400) } : f))}
+              />
             </div>
 
             <div className="actions">

@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <!-- Photo attachment (image_picker camera source) -->
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Support notifications: show on the lock screen/status bar and vibrate like an alarm -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
 
     <!-- usesCleartextTraffic: allows the http:// dev backend (10.0.2.2 / LAN IP).
          Remove it once API_BASE points to an HTTPS domain. -->

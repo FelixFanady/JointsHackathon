@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/supabase";
-import { bad, findCitizen, rateLimit } from "@/lib/mobile";
+import { bad, requireCitizen, rateLimit } from "@/lib/mobile";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +9,9 @@ export async function POST(req: Request) {
   const rl = rateLimit(req, "mine", 30);
   if (rl) return rl;
   const b = await req.json().catch(() => null);
-  const c = await findCitizen(b?.nik);
-  if (!c) return bad("NIK tidak terdaftar.", 404);
+  const f = await requireCitizen(b?.nik);
+  if (f.error) return f.error;
+  const c = f.citizen;
   const { data, error } = await db()
     .from("reports")
     .select("id,kind,category,description,address,status,lat,lng,created_at")

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/supabase";
-import { bad, coords, cleanText, findCitizen, rateLimit, storePhoto } from "@/lib/mobile";
+import { bad, coords, cleanText, rateLimit, requireCitizen, storePhoto } from "@/lib/mobile";
+import { recordLogin, recordLocation } from "@/lib/citizenActivity";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +11,9 @@ export async function POST(req: Request) {
   const rl = rateLimit(req, "sos", 10);
   if (rl) return rl;
   const b = await req.json().catch(() => null);
-  const c = await findCitizen(b?.nik);
-  if (!c) return bad("NIK tidak terdaftar.", 404);
+  const f = await requireCitizen(b?.nik);
+  if (f.error) return f.error;
+  const c = f.citizen;
   const pos = coords(b);
   if (!pos) return bad("Lokasi tidak valid.");
   const category = SOS_CATEGORIES.includes(b?.category) ? b.category : "Darurat";
@@ -39,5 +41,9 @@ export async function POST(req: Request) {
     .select("id")
     .single();
   if (error) return bad("Gagal mengirim SOS. Coba lagi.", 500);
+  // Mark the citizen active and remember where they fired from, so Support can
+  // notify by recency and show each user's area. Best-effort, never blocks.
+  void recordLogin(c.nik);
+  void recordLocation(c.nik, pos.lat, pos.lng);
   return NextResponse.json({ id: data.id });
 }

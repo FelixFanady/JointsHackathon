@@ -8,18 +8,44 @@ import type { Profile, Role } from "./types";
 export const ACCESS_COOKIE = "sa_access";
 export const REFRESH_COOKIE = "sa_refresh";
 
+/**
+ * Short-lived cache of "access token -> active profile". Without it EVERY request (each page
+ * navigation, each 15-20 s poll) paid two sequential Supabase round-trips (auth.getUser + profiles)
+ * just to learn who is calling. The cache is per server instance and keyed by the token itself.
+ * Trade-off: a deactivated/removed user keeps access for at most SESSION_TTL_MS.
+ */
+const SESSION_TTL_MS = 30_000;
+const sessionCache = new Map<string, { at: number; profile: Profile }>();
+
 /** Validates the access token with Supabase and loads the (active) profile. */
 export const getCurrentUser = cache(async (): Promise<Profile | null> => {
   const token = (await cookies()).get(ACCESS_COOKIE)?.value;
   if (!token) return null;
+
+  const hit = sessionCache.get(token);
+  if (hit && Date.now() - hit.at < SESSION_TTL_MS) return hit.profile;
+
+  // Both lookups need the token's user id, so they cannot run in parallel; the cache removes them from the hot path.
   const { data, error } = await db().auth.getUser(token);
-  if (error || !data.user) return null;
+  if (error || !data.user) {
+    sessionCache.delete(token);
+    return null;
+  }
   const { data: profile } = await db()
     .from("profiles")
     .select("id,username,full_name,role,unit,active")
     .eq("id", data.user.id)
     .maybeSingle();
-  if (!profile || !profile.active) return null;
+  if (!profile || !profile.active) {
+    sessionCache.delete(token);
+    return null;
+  }
+
+  sessionCache.set(token, { at: Date.now(), profile: profile as Profile });
+  if (sessionCache.size > 200) {
+    const cutoff = Date.now() - SESSION_TTL_MS;
+    for (const [k, v] of sessionCache) if (v.at < cutoff) sessionCache.delete(k);
+  }
   return profile as Profile;
 });
 

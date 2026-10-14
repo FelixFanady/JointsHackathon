@@ -11,19 +11,20 @@ async function count(table: string, filter?: (q: any) => any) {
 }
 
 export default async function AdminHome() {
-  const [total, pending, valid, falseN, citizens, support] = await Promise.all([
+  // One wave of parallel queries (the "recent" list used to wait for the counts = a second round-trip).
+  const [total, pending, valid, falseN, citizens, support, { data: recent }] = await Promise.all([
     count("reports"),
     count("reports", (q) => q.eq("status", "pending")),
     count("reports", (q) => q.eq("status", "valid")),
     count("reports", (q) => q.eq("status", "false")),
     count("citizens", (q) => q.eq("active", true)),
     count("profiles", (q) => q.eq("role", "support").eq("active", true)),
+    db()
+      .from("reports")
+      .select("id,kind,category,reporter_name,status,created_at")
+      .order("created_at", { ascending: false })
+      .limit(8),
   ]);
-  const { data: recent } = await db()
-    .from("reports")
-    .select("id,kind,category,reporter_name,status,created_at")
-    .order("created_at", { ascending: false })
-    .limit(8);
 
   return (
     <div className="page">

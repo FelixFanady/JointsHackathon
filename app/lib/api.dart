@@ -15,8 +15,11 @@ String get apiBase {
 }
 
 class ApiException implements Exception {
-  ApiException(this.message);
+  ApiException(this.message, {this.inactive = false});
   final String message;
+
+  /// The server says this citizen's account was deactivated by an admin (HTTP 403, code "inactive").
+  final bool inactive;
   @override
   String toString() => message;
 }
@@ -50,14 +53,34 @@ class MyReport {
   final String? description, address;
 }
 
+/// A notification sent by Support. level: info | warning | danger.
+class AppNotice {
+  AppNotice.fromJson(Map<String, dynamic> j)
+      : id = j['id'] as String,
+        title = j['title'] as String,
+        message = j['message'] as String,
+        level = (j['level'] as String?) ?? 'info',
+        createdAt = j['created_at'] as String;
+  final String id, title, message, level, createdAt;
+}
+
 class Api {
+  /// Notifications Support sent to this citizen (plus broadcasts). Pass [since] (ISO) to get only newer ones.
+  /// Each call also tells the server this app is receiving notifications.
+  static Future<List<AppNotice>> notices(String nik, {String? since}) async {
+    final j = await _post('/api/mobile/notices', {'nik': nik, if (since != null) 'since': since});
+    return (j['notices'] as List).map((e) => AppNotice.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   static Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
     try {
       final r = await http
           .post(Uri.parse('$apiBase$path'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body))
           .timeout(const Duration(seconds: 25));
       return _decode(r);
-    } on ApiException {
+    } on ApiException catch (e) {
+      // Deactivated while signed in: leave the app right away, and tell the login screen why.
+      if (e.inactive && session.signedIn) session.forceSignOut(e.message);
       rethrow;
     } catch (_) {
       throw ApiException('Tidak dapat terhubung ke server. Periksa koneksi internet Anda.');
@@ -70,7 +93,7 @@ class Api {
       j = jsonDecode(r.body) as Map<String, dynamic>;
     } catch (_) {}
     if (r.statusCode >= 200 && r.statusCode < 300) return j;
-    throw ApiException((j['error'] as String?) ?? 'Terjadi kesalahan (${r.statusCode}).');
+    throw ApiException((j['error'] as String?) ?? 'Terjadi kesalahan (${r.statusCode}).', inactive: r.statusCode == 403 && j['code'] == 'inactive');
   }
 
   /// Returns the citizen's name for a NIK.
@@ -124,7 +147,15 @@ class Session extends ChangeNotifier {
   String? name;
   bool loaded = false;
 
+  /// Why the app signed the user out on its own (e.g. account deactivated); shown once on the login screen.
+  String? kickedReason;
+
   bool get signedIn => nik != null && name != null;
+
+  Future<void> forceSignOut(String reason) async {
+    kickedReason = reason;
+    await signOut();
+  }
 
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();

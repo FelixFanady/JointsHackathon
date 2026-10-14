@@ -16,6 +16,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool loading = false;
   String? error;
 
+  @override
+  void initState() {
+    super.initState();
+    // Signed out by the app itself (account deactivated)? Say why, once.
+    error = session.kickedReason;
+    session.kickedReason = null;
+  }
   void press(String d) {
     if (nik.length >= 16) return;
     HapticFeedback.selectionClick();

@@ -6,6 +6,7 @@
     "dev": "next dev -H 127.0.0.1 -p 3000",
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 3000",
+    "prod": "next build && next start -H 127.0.0.1 -p 3000",
     "typecheck": "tsc --noEmit",
     "create-admin": "node scripts/create-admin.mjs",
     "seed-demo": "node scripts/seed-demo.mjs"

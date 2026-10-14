@@ -1,5 +1,7 @@
 import "server-only";
 import { db } from "./supabase";
+import type { Region } from "./geo";
+import { addressUsable, forwardGeocode, reverseDetailed } from "./geo";
 
 /**
  * Citizen profile fields (email, phone, photo, birth date, address) stored
@@ -15,6 +17,8 @@ export type CitizenProfile = {
   photo?: string | null; // compressed base64 data-URI
   birth_date?: string | null; // YYYY-MM-DD
   address?: string | null;
+  /** Region resolved from `address` via OpenStreetMap; `failed` = looked up, nothing found (don't retry). */
+  geo?: (Partial<Region> & { query: string; failed?: boolean }) | null;
 };
 
 const PREFIX = "citizen_profile:";
@@ -67,6 +71,37 @@ export async function saveProfile(nik: string, patch: CitizenProfile): Promise<s
     .from("settings")
     .upsert({ key: keyFor(nik), value: next, updated_at: new Date().toISOString() }, { onConflict: "key" });
   return error ? error.message : null;
+}
+
+/**
+ * Resolve the street-map region of the saved address text (forward geocoding).
+ * Skipped when already resolved for this exact text. Too-vague addresses (e.g. "bsd")
+ * are marked `failed` instead of guessing a random place. Returns true if something changed.
+ */
+export async function resolveProfileGeo(nik: string): Promise<boolean> {
+  const p = await loadProfile(nik);
+  const text = (p.address ?? "").trim();
+  if (!text) {
+    if (!p.geo) return false;
+    await saveProfile(nik, { geo: null });
+    return true;
+  }
+  if (p.geo?.query === text) return false;
+  const region = addressUsable(text) ? await forwardGeocode(text) : null;
+  await saveProfile(nik, { geo: region ? { ...region, query: text } : { query: text, failed: true } });
+  return true;
+}
+
+/**
+ * The admin picked the address on the map: store the pin's region directly (no text
+ * guessing). `query` is set to the saved address text so resolveProfileGeo treats it as done.
+ */
+export async function savePinGeo(nik: string, pin: { lat: number; lng: number }, addressText: string): Promise<void> {
+  const r = await reverseDetailed(pin.lat, pin.lng);
+  const region = r?.region;
+  await saveProfile(nik, {
+    geo: region ? { ...region, lat: pin.lat, lng: pin.lng, query: addressText.trim() } : { query: addressText.trim(), failed: true },
+  });
 }
 
 /** Remove a citizen's profile row (used when the NIK is deleted). */

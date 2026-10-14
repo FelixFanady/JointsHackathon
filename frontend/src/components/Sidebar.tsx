@@ -39,7 +39,7 @@ export default function Sidebar({
             it.href === "/admin"
               ? path === "/admin"
               : it.href === "/support/reports"
-                ? path.startsWith("/support") // "Konsol Support" covers both Laporan & Peta
+                ? path.startsWith("/support/reports") || path.startsWith("/support/map") // "Konsol Support" covers Laporan & Peta
                 : path.startsWith(it.href);
           return (
             <Link key={it.href} href={it.href} className={active ? "active" : ""} aria-current={active ? "page" : undefined}>

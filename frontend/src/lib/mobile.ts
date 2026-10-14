@@ -28,6 +28,24 @@ export async function findCitizen(nik: unknown) {
   return data && data.active ? data : null;
 }
 
+export const INACTIVE_MSG = "Akun Anda dinonaktifkan oleh petugas. Hubungi petugas untuk mengaktifkannya kembali.";
+
+/**
+ * Looks the citizen up and tells "not registered" (404) apart from "deactivated by an admin"
+ * (403 + code "inactive") so the app can show the right message and sign the user out.
+ * Every mobile endpoint that acts for a citizen goes through this.
+ */
+export async function requireCitizen(
+  nik: unknown,
+  missingMsg = "NIK tidak terdaftar.",
+): Promise<{ citizen: { nik: string; full_name: string; active: boolean }; error?: undefined } | { error: NextResponse; citizen?: undefined }> {
+  if (typeof nik !== "string" || !NIK_RE.test(nik)) return { error: bad(missingMsg, 404) };
+  const { data } = await db().from("citizens").select("nik,full_name,active").eq("nik", nik).maybeSingle();
+  if (!data) return { error: bad(missingMsg, 404) };
+  if (!data.active) return { error: NextResponse.json({ error: INACTIVE_MSG, code: "inactive" }, { status: 403 }) };
+  return { citizen: data };
+}
+
 export function coords(b: any): { lat: number; lng: number } | null {
   const lat = Number(b?.lat);
   const lng = Number(b?.lng);

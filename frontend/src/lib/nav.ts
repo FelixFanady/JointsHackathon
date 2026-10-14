@@ -10,12 +10,16 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/performance", label: "Performa Support", icon: "monitoring" },
   { href: "/admin/settings", label: "Pengaturan", icon: "tune" },
   { href: "/support/reports", label: "Konsol Support", icon: "inbox" },
+  { href: "/support/users", label: "Pengguna & Daerah", icon: "groups" },
 ];
 
-/** The plain support sidebar, for non-admin support staff only. */
+/** The plain support sidebar, for non-admin support staff only.
+ *  Laporan/Peta are intentionally NOT here — the centered SupportTabs is the
+ *  single switch between those two views, so the sidebar does not duplicate it
+ *  (previously support staff saw the same two buttons twice). */
 export const SUPPORT_NAV: NavItem[] = [
-  { href: "/support/reports", label: "Laporan", icon: "inbox" },
-  { href: "/support/map", label: "Peta Pemantauan", icon: "map" },
+  { href: "/support/reports", label: "Konsol Support", icon: "inbox" },
+  { href: "/support/users", label: "Semua Pengguna", icon: "groups" },
 ];
 
 /** Sidebar config (title + items) for the given role on a support page. */
