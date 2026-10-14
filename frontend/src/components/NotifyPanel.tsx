@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Select from "./Select";
+import { confirmDialog } from "./Dialog";
 import type { Report } from "@/lib/types";
 import type { NoticeKind } from "@/lib/citizenNotice";
 import {
@@ -84,9 +86,14 @@ export default function NotifyPanel({ report, aiRunning = false }: { report: Rep
     setDone("");
     if (count === 0) return setErr(scope === "all" ? "Belum ada warga aktif." : `Tidak ada warga dalam radius ${radius} km.`);
     const who = scope === "all" ? `SEMUA warga (${count} orang)` : `${count} warga dalam radius ${radius} km`;
-    const ok = window.confirm(
-      `${already ? "Notifikasi untuk laporan ini SUDAH pernah dikirim.\n\n" : ""}Kirim notifikasi "${KIND_LABEL[kind]}" ke ${who}?\n\n${kindHint}`,
-    );
+    const ok = await confirmDialog({
+      title: `Kirim notifikasi "${KIND_LABEL[kind]}"?`,
+      details: [["Penerima", who], ["Bunyi", kindHint]],
+      note: already ? "Notifikasi untuk laporan ini SUDAH pernah dikirim." : undefined,
+      confirmLabel: "Kirim notifikasi",
+      tone: "danger",
+      icon: "campaign",
+    });
     if (!ok) return;
     setBusy(true);
     const r = await fetch("/api/reports/notify", {
@@ -140,11 +147,8 @@ export default function NotifyPanel({ report, aiRunning = false }: { report: Rep
           </button>
         </div>
         {scope === "nearby" && (
-          <select className="input" value={radius} onChange={(e) => setRadius(Number(e.target.value))} aria-label="Radius dari lokasi kejadian">
-            {NEARBY_RADIUS_OPTIONS_KM.map((km) => (
-              <option key={km} value={km}>Radius {km} km{info ? ` (${info.nearby[String(km)] ?? 0} warga)` : ""}</option>
-            ))}
-          </select>
+          <Select value={radius} onChange={setRadius} aria-label="Radius dari lokasi kejadian"
+            options={NEARBY_RADIUS_OPTIONS_KM.map((km) => ({ value: km, label: `Radius ${km} km`, hint: info ? `${info.nearby[String(km)] ?? 0} warga` : undefined }))} />
         )}
         <span className="hint">
           {!info ? "Menghitung penerima…" : scope === "nearby" ? `${count} warga berdasarkan lokasi terakhir dari aplikasi.` : `${count} warga aktif.`}

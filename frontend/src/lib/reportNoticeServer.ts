@@ -63,6 +63,10 @@ export type SendPlan = {
   by_role?: string | null;
   auto?: boolean;
   note?: string;
+  /** Attach the report's photo to the phone notification. */
+  photo_url?: string | null;
+  /** Leave this citizen out (the reporter does not need to be warned about their own report). */
+  excludeNik?: string | null;
   /** Restricted officer: "all" means every citizen in these provinces, nearby is limited to them too. */
   scopeProvinces?: Scope;
 };
@@ -83,7 +87,7 @@ export async function sendReportNotice(
       recipients = around.activeCount;
       if (!recipients) return { ok: false, error: "Belum ada warga aktif di wilayah tugas Anda.", status: 400 };
     } else {
-      targets = around.located.filter((c) => c.km <= plan.radiusKm).map((c) => ({ to: c.nik, to_name: c.full_name }));
+      targets = around.located.filter((c) => c.km <= plan.radiusKm && c.nik !== plan.excludeNik).map((c) => ({ to: c.nik, to_name: c.full_name }));
       recipients = targets.length;
       if (!targets.length) return { ok: false, error: `Tidak ada warga dengan lokasi terakhir dalam radius ${plan.radiusKm} km.`, status: 400 };
     }
@@ -102,6 +106,8 @@ export async function sendReportNotice(
     by_role: plan.auto ? "system" : plan.by_role ?? null,
     source: plan.auto ? "auto" : "report",
     target_label: plan.scope === "all" ? (scope === null ? "Semua warga" : "Semua warga di wilayah tugas") : `Radius ${plan.radiusKm} km dari laporan`,
+    report_id: report.id,
+    photo_url: plan.photo_url ?? null,
   });
   if (err) return { ok: false, error: err, status: 500 };
 

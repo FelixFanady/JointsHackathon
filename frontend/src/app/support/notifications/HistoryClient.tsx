@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Select from "@/components/Select";
 import Link from "next/link";
 import Pager, { usePaged } from "@/components/Pager";
 import { KIND_LABEL, LEVEL_LABEL, type NoticeKindKey, type NoticeLevelKey } from "@/lib/noticeMeta";
@@ -21,6 +22,7 @@ type Batch = {
   recipients: number;
   to_names: string[];
   target_label: string | null;
+  photo_url: string | null;
 };
 
 const SOURCE_LABEL = { manual: "Halaman Notifikasi", report: "Dari laporan", auto: "Otomatis (AI + BMKG)" } as const;
@@ -69,12 +71,13 @@ export default function HistoryClient() {
 
       <div className="toolbar">
         <input className="input search grow" placeholder="Cari judul, isi, pengirim, penerima…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cari notifikasi" />
-        <select className="input select-sm" value={source} onChange={(e) => setSource(e.target.value as typeof source)} aria-label="Sumber">
-          <option value="all">Semua sumber</option>
-          <option value="manual">Halaman Notifikasi</option>
-          <option value="report">Dari laporan</option>
-          <option value="auto">Otomatis (AI + BMKG)</option>
-        </select>
+        <Select className="select-sm" value={source} onChange={setSource} aria-label="Sumber"
+          options={[
+            { value: "all", label: "Semua sumber" },
+            { value: "manual", label: "Halaman Notifikasi" },
+            { value: "report", label: "Dari laporan" },
+            { value: "auto", label: "Otomatis (AI + BMKG)" },
+          ]} />
         <Link className="btn primary" href="/support/notifications/new"><span className="msym sm">add</span>Buat notifikasi</Link>
       </div>
       {scope === "own" && <p className="hint" style={{ marginBottom: 12 }}>Menampilkan notifikasi yang Anda kirim sendiri.</p>}
@@ -96,7 +99,15 @@ export default function HistoryClient() {
                   <time dateTime={b.created_at} title={formatDateTime(b.created_at)}>{timeAgo(b.created_at)} · {formatDateTime(b.created_at)}</time>
                 </div>
                 <h3>{b.title}</h3>
-                <p className="msg">{b.message}</p>
+                <div className="lg-body">
+                  <p className="msg">{b.message}</p>
+                  {b.photo_url && (
+                    <a href={b.photo_url} target="_blank" rel="noopener noreferrer" className="lg-photo" title="Foto dari pelapor (ikut dikirim di notifikasi)">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={b.photo_url} alt="Foto dari pelapor" referrerPolicy="no-referrer" loading="lazy" />
+                    </a>
+                  )}
+                </div>
                 <div className="lg-meta">
                   <span><span className="msym xs">group</span>
                     {b.to_all ? "Semua warga" : b.target_label ?? `${b.recipients} warga`}

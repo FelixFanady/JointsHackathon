@@ -5,6 +5,7 @@ export type SkeletonVariant = "stats" | "reports" | "table" | "form" | "map";
 export type RouteMeta = { eyebrow?: string; title?: string; variant: SkeletonVariant };
 
 const ROUTES: [prefix: string, meta: RouteMeta][] = [
+  ["/support/status", { eyebrow: "Status Wilayah", title: "Status Wilayah", variant: "form" }],
   ["/support/notifications/new", { eyebrow: "Notifikasi", title: "Buat Notifikasi", variant: "form" }],
   ["/support/notifications", { eyebrow: "Notifikasi", title: "Riwayat Notifikasi", variant: "table" }],
   ["/support/reports", { eyebrow: "Konsol Support", title: "Laporan", variant: "reports" }],

@@ -18,10 +18,10 @@ class ReportsScreen extends StatefulWidget {
   State<ReportsScreen> createState() => _ReportsScreenState();
 }
 
+/// "Lapor" tab: a big "Buat Laporan" card on top, then the citizen's own reports.
+/// Reports near the citizen live on their own tab (screens/nearby.dart).
 class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserver, AutoRefresh {
-  int tab = 0;
   List<MyReport>? mine;
-  List<NearbyItem>? around;
   String? error;
 
   @override
@@ -37,10 +37,6 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
     if (nik == null) return;
     final m = await Api.myReports(nik);
     if (mounted) setState(() { mine = m; error = null; });
-    final p = await recentPlace();
-    if (p == null) return;
-    final n = await Api.nearby(p.lat, p.lng);
-    if (mounted) setState(() => around = n.where((e) => e.kind == 'report').toList());
   }
 
   Future<void> _load() async {
@@ -50,18 +46,6 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
       if (mounted) setState(() => mine = m);
     } on ApiException catch (e) {
       if (mounted) setState(() { error = e.message; mine ??= []; });
-    }
-    final (p, _) = await currentPlace();
-    if (p != null) {
-      rememberPlace(p);
-      try {
-        final n = await Api.nearby(p.lat, p.lng);
-        if (mounted) setState(() => around = n.where((e) => e.kind == 'report').toList());
-      } catch (_) {
-        if (mounted) setState(() => around ??= []);
-      }
-    } else if (mounted) {
-      setState(() => around ??= []);
     }
   }
 
@@ -75,48 +59,105 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
           const Text('Laporan Warga', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, letterSpacing: -.6)),
           const SizedBox(height: 16),
-          PrimaryButton(label: 'Buat Laporan Baru', icon: Icons.add, onPressed: _create, color: C.primaryDark),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(color: C.field, borderRadius: BorderRadius.circular(14)),
-            child: Row(children: [
-              _tab(0, 'Laporan Saya', mine?.length),
-              _tab(1, 'Sekitar Saya', around?.length),
-            ]),
-          ),
-          const SizedBox(height: 16),
+          _createHero(),
+          const SizedBox(height: 24),
+          Row(children: [
+            const Text('Laporan Saya', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            if (mine != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: C.field, borderRadius: BorderRadius.circular(99)),
+                child: Text('${mine!.length}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ]),
+          const SizedBox(height: 12),
           if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: C.emergency))),
-          if (tab == 0) ..._mineList() else ..._aroundList(),
+          ..._mineList(),
         ],
       ),
     );
   }
 
-  Widget _tab(int i, String label, int? count) => Expanded(
-        child: GestureDetector(
-          onTap: () => setState(() => tab = i),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(color: tab == i ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(11), boxShadow: tab == i ? shadowSm : null),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: tab == i ? C.text : C.muted)),
-              if (count != null) ...[
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-                  decoration: BoxDecoration(color: C.field, borderRadius: BorderRadius.circular(99)),
-                  child: Text('$count', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                ),
-              ],
+  /// Big blue card that starts a new report.
+  Widget _createHero() {
+    const examples = [Icons.flood, Icons.local_fire_department_outlined, Icons.vibration, Icons.lock_open];
+    return Material(
+      color: Colors.transparent,
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [C.primary, C.primaryDark]),
+          boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .3), blurRadius: 24, offset: const Offset(0, 10))],
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(28),
+          onTap: _create,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: Stack(children: [
+              Positioned(right: -40, top: -50, child: _blob(160, .10)),
+              Positioned(right: 60, bottom: -60, child: _blob(110, .07)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Container(
+                      width: 60, height: 60,
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), boxShadow: shadowMd),
+                      child: const Icon(Icons.edit_note_rounded, color: C.primary, size: 34),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: .18), borderRadius: BorderRadius.circular(99)),
+                      child: const Text('4 langkah', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                    ),
+                  ]),
+                  const SizedBox(height: 18),
+                  const Text('Buat Laporan Baru', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -.4)),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Laporkan bencana, kriminal, atau kejadian berbahaya di sekitar Anda. Laporan langsung diteruskan ke petugas.',
+                    style: TextStyle(color: Colors.white.withValues(alpha: .88), fontSize: 14.5, height: 1.4),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(children: [
+                    for (final ic in examples)
+                      Container(
+                        width: 36, height: 36,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: .16), shape: BoxShape.circle),
+                        child: Icon(ic, size: 18, color: Colors.white),
+                      ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(99)),
+                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text('Mulai', style: TextStyle(color: C.primary, fontWeight: FontWeight.w700, fontSize: 15)),
+                        SizedBox(width: 4),
+                        Icon(Icons.arrow_forward_rounded, color: C.primary, size: 20),
+                      ]),
+                    ),
+                  ]),
+                ]),
+              ),
             ]),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _blob(double size, double alpha) => IgnorePointer(
+        child: Container(width: size, height: size, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: alpha))),
       );
 
   List<Widget> _mineList() {
@@ -135,32 +176,7 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(r.kind == 'sos' ? 'SOS • ${r.category}' : r.category, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                   const SizedBox(height: 2),
-                  Text(timeAgo(r.createdAt), style: const TextStyle(color: C.muted, fontSize: 13)),
-                ]),
-              ),
-              StatusChip(r.status),
-            ]),
-          ),
-        ),
-    ];
-  }
-
-  List<Widget> _aroundList() {
-    if (around == null) return [const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()))];
-    if (around!.isEmpty) return [_empty('Belum ada laporan di sekitar', 'Laporan warga dalam radius 5 km akan muncul di sini. Pastikan lokasi aktif.')];
-    return [
-      for (final r in around!)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: AppCard(
-            onTap: () => showNearbyDetail(context, r),
-            child: Row(children: [
-              CircleAvatar(radius: 24, backgroundColor: C.primaryTint, child: Icon(iconForCategory(r.category), color: C.primary)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(r.category, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                  Text('${distanceLabel(r.distanceKm)} • ${timeAgo(r.createdAt)}', style: const TextStyle(color: C.muted, fontSize: 13)),
+                  Text('${reportCode(r.id, r.kind)} • ${timeAgo(r.createdAt)}', style: const TextStyle(color: C.muted, fontSize: 13)),
                 ]),
               ),
               StatusChip(r.status),
@@ -242,7 +258,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     if (place == null) { setState(() => error = locError ?? 'Lokasi belum tersedia.'); return; }
     setState(() { sending = true; error = null; });
     try {
-      await Api.sendReport(
+      final code = await Api.sendReport(
         nik: session.nik!, lat: place!.lat, lng: place!.lng, category: category!,
         description: desc.text.trim(), danger: danger ?? false, photoB64: photoB64,
       );
@@ -256,6 +272,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             body: SafeArea(
               child: SentView(
                 title: 'Laporan Diterima',
+                code: code,
                 message: 'Laporan Anda sudah masuk ke petugas dan akan segera diverifikasi. Pantau statusnya di tab Laporan Saya.',
                 onDone: () => Navigator.pop(ctx),
               ),
@@ -295,16 +312,19 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               if (step < 3)
                 PrimaryButton(label: step == 2 && photoBytes == null ? 'Lewati' : 'Lanjut', onPressed: canNext ? () => setState(() { step++; error = null; }) : null)
               else ...[
                 PrimaryButton(label: 'Kirim Laporan', icon: Icons.send_rounded, loading: sending, onPressed: _send),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 const Text('Laporan langsung diteruskan ke petugas untuk diverifikasi.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: C.muted)),
               ],
-              if (step > 0) SecondaryButton(label: 'Kembali', onPressed: sending ? null : () => setState(() => step--)),
+              if (step > 0) ...[
+                const SizedBox(height: 12),
+                SecondaryButton(label: 'Kembali', onPressed: sending ? null : () => setState(() => step--)),
+              ],
             ]),
           ),
         ),
@@ -532,12 +552,16 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(color: C.primaryTint, borderRadius: BorderRadius.circular(12)),
-            child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.lock_outline, size: 16, color: C.primary),
-              SizedBox(width: 8),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.lock_outline, size: 16, color: C.primary),
+              const SizedBox(width: 8),
               Expanded(
-                child: Text('Nama dan NIK hanya terlihat oleh petugas. Warga lain hanya melihat jenis kejadian dan perkiraan lokasi.',
-                    style: TextStyle(fontSize: 12, height: 1.4, color: C.text)),
+                // Instant crime alerts share the photo with nearby citizens: say so before sending.
+                child: Text(
+                    category == 'Penjambretan'
+                        ? 'Nama dan NIK hanya terlihat oleh petugas. Untuk penjambretan, warga dalam radius 2 km langsung diberi peringatan berisi jenis kejadian, perkiraan lokasi, dan foto Anda (jika ada).'
+                        : 'Nama dan NIK hanya terlihat oleh petugas. Warga lain hanya melihat jenis kejadian dan perkiraan lokasi.',
+                    style: const TextStyle(fontSize: 12, height: 1.4, color: C.text)),
               ),
             ]),
           ),

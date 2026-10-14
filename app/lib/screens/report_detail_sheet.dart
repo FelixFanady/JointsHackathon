@@ -70,7 +70,7 @@ class _ReportDetailSheetState extends State<ReportDetailSheet> {
     final c = r.category.toLowerCase();
     return c.contains('gempa') || c.contains('tsunami');
   }
-  String get code => '${isSos ? 'SOS' : 'LW'}-${r.id.replaceAll('-', '').substring(0, 8).toUpperCase()}';
+  String get code => reportCode(r.id, r.kind);
 
   Future<void> _copy() async {
     await Clipboard.setData(ClipboardData(text: code));

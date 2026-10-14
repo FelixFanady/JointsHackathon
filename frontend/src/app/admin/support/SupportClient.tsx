@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "@/components/Modal";
+import { alertDialog } from "@/components/Dialog";
 import { formatDateTime } from "@/lib/util";
 import type { Profile } from "@/lib/types";
 import { ALL_AREAS, PROVINCES, areaLabel } from "@/lib/provinces";
@@ -71,7 +72,8 @@ export default function SupportClient({ initial }: { initial: Row[] }) {
 
   async function toggle(p: Profile) {
     const res = await fetch(`/api/admin/support/${p.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !p.active }) });
-    if (res.ok) router.refresh(); else alert("Gagal mengubah status.");
+    if (res.ok) router.refresh();
+    else await alertDialog({ title: "Gagal mengubah status", message: (await res.json().catch(() => ({}))).error ?? "Coba lagi sebentar lagi.", tone: "danger", icon: "error" });
   }
 
   const genPw = () => {

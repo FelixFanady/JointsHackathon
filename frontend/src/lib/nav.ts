@@ -1,6 +1,9 @@
 import type { NavItem } from "@/components/Sidebar";
 import type { Role } from "@/lib/types";
 
+/** Status Wilayah (admin + support): ongoing alert level per area, e.g. SIAGA BENCANA GEMPA in Aceh. */
+const STATUS_NAV: NavItem = { href: "/support/status", label: "Status Wilayah", icon: "crisis_alert" };
+
 /** "Notifikasi" dropdown (admin + support): push a notification, and the log of every push. */
 const NOTIFICATIONS_NAV: NavItem = {
   href: "/support/notifications",
@@ -23,6 +26,7 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/support/reports", label: "Laporan", icon: "inbox" },
   { href: "/support/map", label: "Peta Pemantauan", icon: "map" },
   { href: "/support/users", label: "Pengguna & Daerah", icon: "groups" },
+  STATUS_NAV,
   NOTIFICATIONS_NAV,
 ];
 
@@ -32,6 +36,7 @@ export const SUPPORT_NAV: NavItem[] = [
   { href: "/support/reports", label: "Laporan", icon: "inbox" },
   { href: "/support/map", label: "Peta Pemantauan", icon: "map" },
   { href: "/support/users", label: "Semua Pengguna", icon: "groups" },
+  STATUS_NAV,
   NOTIFICATIONS_NAV,
 ];
 

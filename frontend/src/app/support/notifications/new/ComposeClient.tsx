@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Select from "@/components/Select";
+import { confirmDialog } from "@/components/Dialog";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useUsers, type DirectoryUser } from "@/components/useUsers";
@@ -20,7 +22,7 @@ const MESSAGE_MAX = 800;
 /** Notifikasi › Buat Notifikasi: push a notification to citizens' phones. */
 export default function ComposeClient() {
   const sp = useSearchParams();
-  const { users, loading } = useUsers(60000, { photos: false });
+  const { users, loading } = useUsers(60000);
 
   const [mode, setMode] = useState<Mode>("all");
   const [city, setCity] = useState("");
@@ -77,7 +79,19 @@ export default function ComposeClient() {
     setErr("");
     setDone("");
     if (recipients.length === 0) return setErr("Tidak ada penerima pada pilihan ini.");
-    if (!window.confirm(`Kirim notifikasi ${cat.label.toUpperCase()} (${kindInfo.label}) ke ${mode === "all" ? `SEMUA warga (${recipients.length})` : `${recipients.length} warga`}?\n\n${kindInfo.sound}`)) return;
+    const ok = await confirmDialog({
+      title: `Kirim notifikasi ${cat.label.toUpperCase()}?`,
+      message: "Notifikasi langsung muncul di HP warga.",
+      details: [
+        ["Penerima", mode === "all" ? `SEMUA warga (${recipients.length})` : `${recipients.length} warga`],
+        ["Jenis", kindInfo.label],
+        ["Bunyi", kindInfo.sound],
+      ],
+      confirmLabel: `Kirim ke ${recipients.length} warga`,
+      tone: level === "danger" ? "danger" : level === "warning" ? "warning" : "primary",
+      icon: "send",
+    });
+    if (!ok) return;
     setBusy(true);
     const res = await fetch("/api/notices", {
       method: "POST",
@@ -93,7 +107,8 @@ export default function ComposeClient() {
 
   return (
     <div className="compose-grid">
-      <form className="card compose-form" onSubmit={submit}>
+      <form id="compose-form" className="card compose-form" onSubmit={submit}>
+        <section className="cf-sec">
         <div className="field">
           <label>Kategori</label>
           <div className="cat-pick" role="radiogroup" aria-label="Kategori notifikasi">
@@ -109,7 +124,7 @@ export default function ComposeClient() {
 
         <div className="field">
           <label>Jenis kejadian (menentukan bunyi di HP)</label>
-          <div className="tabs" role="tablist" aria-label="Jenis kejadian">
+          <div className="tabs fill" role="tablist" aria-label="Jenis kejadian">
             {NOTICE_KINDS.map((k) => (
               <button type="button" key={k.key} role="tab" aria-selected={kind === k.key} className={kind === k.key ? "on" : ""} onClick={() => setKind(k.key)}>
                 <span className="msym sm">{k.icon}</span>{k.label}
@@ -118,10 +133,12 @@ export default function ComposeClient() {
           </div>
           <span className="hint">{kindInfo.sound}</span>
         </div>
+        </section>
 
+        <section className="cf-sec">
         <div className="field">
           <label>Penerima</label>
-          <div className="tabs" role="tablist" aria-label="Penerima">
+          <div className="tabs fill" role="tablist" aria-label="Penerima">
             {([["all", "Semua warga"], ["region", "Per daerah"], ["picked", "Pilih warga"]] as [Mode, string][]).map(([m, l]) => (
               <button type="button" key={m} role="tab" aria-selected={mode === m} className={mode === m ? "on" : ""} onClick={() => setMode(m)}>{l}</button>
             ))}
@@ -131,13 +148,10 @@ export default function ComposeClient() {
               <span className="hint">Belum ada warga dengan daerah yang dikenali di peta.</span>
             ) : (
               <div className="region-pick">
-                <select className="input" value={city} onChange={(e) => { setCity(e.target.value); setDistrict(""); }} aria-label="Kota atau kabupaten">
-                  {cities.map(([c, n]) => <option key={c} value={c}>{c} ({n})</option>)}
-                </select>
-                <select className="input" value={district} onChange={(e) => setDistrict(e.target.value)} aria-label="Kecamatan">
-                  <option value="">Semua kecamatan</option>
-                  {districts.map(([d, n]) => <option key={d} value={d}>{d} ({n})</option>)}
-                </select>
+                <Select value={city} onChange={(v) => { setCity(v); setDistrict(""); }} aria-label="Kota atau kabupaten"
+                  options={cities.map(([c, n]) => ({ value: c, label: c, hint: n }))} />
+                <Select value={district} onChange={setDistrict} aria-label="Kecamatan"
+                  options={[{ value: "", label: "Semua kecamatan" }, ...districts.map(([d, n]) => ({ value: d, label: d, hint: n }))]} />
               </div>
             )
           )}
@@ -160,15 +174,39 @@ export default function ComposeClient() {
               </div>
             </div>
           )}
-          <div className="recipients" aria-live="polite">
-            <span className="msym sm">group</span>
-            <b>{recipients.length}</b> penerima
-            {mode !== "all" && recipients.length > 0 && (
-              <small className="muted"> · {recipients.slice(0, 3).map((u) => u.full_name).join(", ")}{recipients.length > 3 ? ` +${recipients.length - 3}` : ""}</small>
+          <div className={`recipients${recipients.length === 0 ? " none" : ""}`} aria-live="polite">
+            <span className="rc-ic msym sm" aria-hidden>group</span>
+            <div className="rc-text">
+              <b>{recipients.length} penerima</b>
+              <small>
+                {recipients.length === 0
+                  ? "Belum ada penerima pada pilihan ini"
+                  : mode === "all"
+                    ? "Semua warga aktif"
+                    : `${recipients.slice(0, 3).map((u) => u.full_name).join(", ")}${recipients.length > 3 ? ` dan ${recipients.length - 3} lainnya` : ""}`}
+              </small>
+            </div>
+            {recipients.length > 0 && (
+              <div className="rc-avatars" aria-hidden>
+                {recipients.slice(0, 3).map((u) => (
+                  // Same avatar as the Users page: profile photo, else initials.
+                  <span key={u.nik} title={u.full_name} className="av">
+                    {u.photo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={u.photo} alt="" width={32} height={32} />
+                    ) : (
+                      u.full_name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?"
+                    )}
+                  </span>
+                ))}
+                {recipients.length > 3 && <span className="more">+{recipients.length - 3}</span>}
+              </div>
             )}
           </div>
         </div>
+        </section>
 
+        <section className="cf-sec">
         <div className="field">
           <label htmlFor="nt">Judul</label>
           <input id="nt" className="input" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder="Contoh: Waspada banjir di wilayah Anda" required />
@@ -176,14 +214,9 @@ export default function ComposeClient() {
         <div className="field">
           <label htmlFor="nm">Pesan</label>
           <textarea id="nm" className="input notice-msg" rows={8} value={message} onChange={(e) => setMessage(e.target.value)} maxLength={MESSAGE_MAX} placeholder="Isi pemberitahuan untuk warga… (baris baru dan tanda • tampil apa adanya di HP)" required />
-          <span className="hint">{message.length}/{MESSAGE_MAX}</span>
+          <span className="hint counter">{message.length}/{MESSAGE_MAX}</span>
         </div>
-
-        {err && <div className="alert error">{err}</div>}
-        {done && <div className="alert ok"><span className="msym sm">check_circle</span><span>{done} <Link href="/support/notifications">Lihat riwayat</Link></span></div>}
-        <button type="submit" className="btn primary" disabled={busy || recipients.length === 0 || title.trim().length < 2 || message.trim().length < 2}>
-          <span className="msym sm">send</span>{busy ? "Mengirim…" : `Kirim ke ${recipients.length} warga`}
-        </button>
+        </section>
       </form>
 
       {/* Live preview of the phone notification */}
@@ -199,6 +232,14 @@ export default function ComposeClient() {
           <dt>Bunyi</dt><dd>{kindInfo.sound}</dd>
           <dt>Penerima</dt><dd>{targetLabel} ({recipients.length})</dd>
         </dl>
+        {/* Send lives under the preview: what you see is what is sent. The button submits the form on the left. */}
+        <div className="pv-send">
+          {err && <div className="alert error">{err}</div>}
+          {done && <div className="alert ok"><span className="msym sm">check_circle</span><span>{done} <Link href="/support/notifications">Lihat riwayat</Link></span></div>}
+          <button type="submit" form="compose-form" className="btn primary" disabled={busy || recipients.length === 0 || title.trim().length < 2 || message.trim().length < 2}>
+            <span className="msym sm">send</span>{busy ? "Mengirim…" : `Kirim ke ${recipients.length} warga`}
+          </button>
+        </div>
       </aside>
     </div>
   );

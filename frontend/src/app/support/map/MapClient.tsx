@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import MapView, { type MapCluster } from "./MapView";
 import AiInsight from "@/components/AiInsight";
 import { setStatus, useReports } from "@/components/useReports";
-import { clusterPoints, timeAgo } from "@/lib/util";
+import { clusterPoints, reportCode, timeAgo } from "@/lib/util";
 import { DEFAULT_SETTINGS, type Report, type Settings } from "@/lib/types";
 import { homeForAreas, type MapHome } from "@/lib/provinces";
 import { categoryShares, colorFor } from "@/lib/categoryColors";
@@ -186,7 +186,7 @@ export default function MapClient() {
           <div className="items">
             {selected.items.slice(0, 8).map((i: Report) => (
               <div className="it" key={i.id}>
-                <div>{i.category}<small>{i.description?.slice(0, 80) || "SOS"}</small></div>
+                <div>{i.category} <span className="rid mono">{reportCode(i)}</span><small>{i.description?.slice(0, 80) || "SOS"}</small></div>
                 <small>{timeAgo(i.created_at)}</small>
               </div>
             ))}

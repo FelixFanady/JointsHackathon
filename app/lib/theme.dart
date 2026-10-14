@@ -93,20 +93,33 @@ class PrimaryButton extends StatelessWidget {
   }
 }
 
+/// Secondary action (e.g. "Kembali") under a PrimaryButton: outlined white pill, same height and width,
+/// so it is clearly a button but never competes with the main action. Same look as the SOS flow's back button.
 class SecondaryButton extends StatelessWidget {
-  const SecondaryButton({super.key, required this.label, required this.onPressed});
+  const SecondaryButton({super.key, required this.label, required this.onPressed, this.icon = Icons.arrow_back_rounded});
   final String label;
   final VoidCallback? onPressed;
+  final IconData? icon;
   @override
-  Widget build(BuildContext context) => SizedBox(
-        height: 48,
-        width: double.infinity,
-        child: TextButton(
-          onPressed: onPressed,
-          style: TextButton.styleFrom(foregroundColor: C.muted, shape: const StadiumBorder(), textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600)),
-          child: Text(label),
-        ),
-      );
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final style = OutlinedButton.styleFrom(
+      foregroundColor: C.text,
+      backgroundColor: Colors.white,
+      disabledForegroundColor: C.muted.withValues(alpha: .6),
+      side: BorderSide(color: enabled ? C.outline : C.outline.withValues(alpha: .5), width: 1.5),
+      shape: const StadiumBorder(),
+      elevation: 0,
+      textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
+    ).copyWith(overlayColor: WidgetStatePropertyAll(C.primary.withValues(alpha: .06)));
+    return SizedBox(
+      height: 52,
+      width: double.infinity,
+      child: icon == null
+          ? OutlinedButton(onPressed: onPressed, style: style, child: Text(label))
+          : OutlinedButton.icon(onPressed: onPressed, style: style, icon: Icon(icon, size: 20), label: Text(label)),
+    );
+  }
 }
 
 class AppCard extends StatelessWidget {
@@ -167,6 +180,13 @@ String timeAgo(String iso) {
 }
 
 String distanceLabel(double km) => km < 1 ? '${(km * 1000).round()} m' : '${km.toStringAsFixed(1)} km';
+
+/// Report ID seen by the citizen, Support and Admin: "LW-1A2B3C4D" (laporan warga) or "SOS-1A2B3C4D".
+/// Same rule as the web dashboard (frontend/src/lib/util.ts reportCode) — keep them identical.
+String reportCode(String id, String kind) {
+  final hex = id.replaceAll(RegExp(r'[^0-9a-zA-Z]'), '');
+  return '${kind == 'sos' ? 'SOS' : 'LW'}-${hex.substring(0, hex.length < 8 ? hex.length : 8).toUpperCase()}';
+}
 
 /// (icon, label, description) per incident category - mirrors the design's classification step.
 const incidentCategories = <String, List<(IconData, String, String)>>{

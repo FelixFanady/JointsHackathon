@@ -8,24 +8,24 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../api.dart';
-import '../auto_refresh.dart';
 import '../sos_sound.dart';
 import '../theme.dart';
 import '../widgets/sent_view.dart';
+import '../widgets/area_status_banner.dart';
 
 const holdDuration = Duration(seconds: 3);
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.onOpenMap});
-  final VoidCallback onOpenMap;
+  const HomeScreen({super.key, required this.onOpenNearby});
+  /// Opens the "Sekitar" tab (tapping the Status Sekitar card).
+  final VoidCallback onOpenNearby;
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver, AutoRefresh {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late final AnimationController hold = AnimationController(vsync: this, duration: holdDuration);
-  List<NearbyItem>? alerts;
-  bool locationFailed = false;
+  final _statusKey = GlobalKey<AreaStatusCardState>();
 
   @override
   void initState() {
@@ -33,39 +33,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     hold.addStatusListener((s) {
       if (s == AnimationStatus.completed) _triggered();
     });
-    _loadNearby();
   }
 
   @override
   void dispose() {
     hold.dispose();
     super.dispose();
-  }
-
-  // Silent refresh of "Status Sekitar" (every 20 s while Beranda is visible, and after a new SOS/report).
-  // Skipped while the SOS button is being held so nothing re-renders under the user's finger.
-  @override
-  Future<void> autoRefresh() async {
-    if (hold.isAnimating) return;
-    final p = await recentPlace();
-    if (p == null) return;
-    final items = await Api.nearby(p.lat, p.lng);
-    if (mounted) setState(() { locationFailed = false; alerts = items.where((e) => e.kind == 'sos').toList(); });
-  }
-
-  Future<void> _loadNearby() async {
-    final (p, _) = await currentPlace();
-    if (p != null) rememberPlace(p);
-    if (p == null) {
-      if (mounted) setState(() { locationFailed = true; alerts = []; });
-      return;
-    }
-    try {
-      final items = await Api.nearby(p.lat, p.lng);
-      if (mounted) setState(() => alerts = items.where((e) => e.kind == 'sos').toList());
-    } catch (_) {
-      if (mounted) setState(() => alerts = []);
-    }
   }
 
   Future<void> _triggered() async {
@@ -86,7 +59,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final first = (session.name ?? '').split(' ').first;
     return RefreshIndicator(
-      onRefresh: _loadNearby,
+      onRefresh: () async => _statusKey.currentState?.refresh(),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
@@ -114,38 +87,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
           const SizedBox(height: 32),
-          AppCard(
-            onTap: widget.onOpenMap,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                const Expanded(child: Text('Status Sekitar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
-                Text(alerts == null ? 'Memuat…' : (alerts!.isEmpty ? 'Aman' : '${alerts!.length} aktif'),
-                    style: const TextStyle(color: C.muted, fontWeight: FontWeight.w500)),
-              ]),
-              const SizedBox(height: 12),
-              Row(children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: alerts?.isNotEmpty == true ? C.warnBg : C.primaryTint,
-                  child: Icon(alerts?.isNotEmpty == true ? Icons.warning_amber_rounded : Icons.verified_outlined,
-                      color: alerts?.isNotEmpty == true ? C.warnText : C.primary),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    locationFailed
-                        ? 'Aktifkan lokasi untuk melihat peringatan di sekitar Anda'
-                        : alerts == null
-                            ? 'Memeriksa area sekitar…'
-                            : alerts!.isEmpty
-                                ? 'Tidak ada peringatan aktif di sekitar Anda'
-                                : '${alerts!.first.category} • ${distanceLabel(alerts!.first.distanceKm)} dari Anda',
-                    style: const TextStyle(fontSize: 15),
-                  ),
-                ),
-              ]),
-            ]),
-          ),
+          // Status Wilayah (set by Support/Admin) — replaces the old "Status Sekitar" card.
+          AreaStatusCard(key: _statusKey, onOpen: widget.onOpenNearby),
         ],
       ),
     );
@@ -153,8 +96,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 }
 
 /// Hold-to-activate SOS (3 s), per DESIGN.md.
-/// Idle: soft ripples + breathing. Pressed: button sinks, glow grows, ring fills,
-/// countdown number pops each second with a rising beep; release early = cancel.
+/// A flat red push button in a white bezel: no gloss, no glow. Idle: one faint halo.
+/// Pressed: the face is pushed down onto its darker base, the ring on the bezel fills (ticks mark
+/// the seconds) and the countdown replaces "SOS", with one beep per second; release early = cancel.
 class _SosButton extends StatefulWidget {
   const _SosButton({required this.hold});
   final AnimationController hold;
@@ -234,163 +178,91 @@ class _SosButtonState extends State<_SosButton> with SingleTickerProviderStateMi
             final v = hold.value;
             final t = idle.value;
             final pressed = down && v > 0;
-            final breath = 1 + .025 * math.sin(t * 2 * math.pi);
-            // Number pops at the start of each second.
+            final still = MediaQuery.of(context).disableAnimations;
+            // The countdown number pops slightly at the start of each second.
             final frac = (v * holdDuration.inSeconds) % 1;
-            final pop = 1 + .35 * (1 - Curves.easeOut.transform(math.min(frac * 4, 1)));
-            // Tiny tremble that grows as the hold completes.
-            final shake = pressed ? math.sin(t * 2 * math.pi * 40) * 1.6 * v : 0.0;
+            final pop = 1 + .18 * (1 - Curves.easeOut.transform(math.min(frac * 5, 1)));
             final remaining = (holdDuration.inSeconds - v * holdDuration.inSeconds).ceil().clamp(1, holdDuration.inSeconds);
-
-            // Dome sinks into its housing while held.
-            final sink = down ? 4.0 : 0.0;
+            const face = 196.0;
+            const lip = 7.0; // visible side of the button below the face, like a real push button
 
             return SizedBox(
-              width: 310, height: 310,
+              width: 300, height: 300,
               child: Stack(alignment: Alignment.center, children: [
-                // Idle: three thin ripple rings spreading outward (radar pulse).
-                if (!pressed)
-                  for (var k = 0; k < 3; k++)
-                    _pulse(
-                      size: 236 + 74 * ((t + k / 3) % 1),
-                      fade: 1 - (t + k / 3) % 1,
-                    ),
-                // Pressed: a warm glow that grows and throbs with the hold.
-                if (pressed)
-                  _ring(
-                    size: 262 + 40 * v + 5 * math.sin(t * 2 * math.pi * 6),
-                    color: C.emergency.withValues(alpha: .12 + .2 * v),
-                  ),
-                // Housing: a soft raised plate the button sits in.
-                Transform.scale(
-                  scale: pressed ? 1 : breath,
-                  child: Container(
-                    width: 252, height: 252,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Colors.white, Color(0xFFFDE8E8)],
+                // Idle: one slow, faint halo. Nothing while held, nothing with reduced motion.
+                if (!down && !still)
+                  IgnorePointer(
+                    child: Container(
+                      width: 252 + 44 * t, height: 252 + 44 * t,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: C.emergency.withValues(alpha: .22 * (1 - t)), width: 1.5),
                       ),
-                      boxShadow: [
-                        BoxShadow(color: C.emergency.withValues(alpha: .22), blurRadius: 34, offset: const Offset(0, 16)),
-                        const BoxShadow(color: Colors.white, blurRadius: 10, offset: Offset(-4, -4)),
-                      ],
                     ),
                   ),
-                ),
-                // 3-segment hold ring: one segment per second.
-                Transform.scale(
-                  scale: pressed ? 1 : breath,
-                  child: CustomPaint(
-                    size: const Size(234, 234),
-                    painter: _HoldRingPainter(v: v, pressed: pressed),
+                // Bezel: a plain white collar the button sits in.
+                Container(
+                  width: 252, height: 252,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFF3D9DA)),
+                    boxShadow: [BoxShadow(color: const Color(0xFF14213D).withValues(alpha: .07), blurRadius: 28, offset: const Offset(0, 12))],
                   ),
                 ),
-                // The button itself: sinks when pressed, springs back on release.
-                Transform.translate(
-                  offset: Offset(shake, sink),
-                  child: AnimatedScale(
-                    scale: down ? .93 : 1,
-                    duration: Duration(milliseconds: down ? 140 : 520),
-                    curve: down ? Curves.easeOut : Curves.elasticOut,
-                    child: Transform.scale(
-                      scale: pressed ? 1 : breath,
+                // Hold progress on the bezel, with a tick for each second.
+                CustomPaint(size: const Size(230, 230), painter: _HoldRingPainter(v: v, pressed: pressed)),
+                // Button: a darker base (the "side") and the face on top. Pressing pushes the face down onto it.
+                SizedBox(
+                  width: face, height: face + lip,
+                  child: Stack(children: [
+                    Positioned(
+                      left: 0, right: 0, bottom: 0,
                       child: Container(
-                        width: 200, height: 200,
+                        height: face,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: RadialGradient(
-                            center: const Alignment(-.3, -.4),
-                            radius: 1.05,
-                            colors: pressed
-                                ? [Color.lerp(C.emergency, C.emergencyDark, v)!, C.emergencyDark, const Color(0xFF8E0B17)]
-                                : const [C.emergencyGlow, C.emergency, C.emergencyDark],
-                            stops: const [0, .55, 1],
-                          ),
+                          color: const Color(0xFFA3101C),
                           boxShadow: [
-                            // Deep colored drop shadow = "lifted"; shrinks when pressed in.
                             BoxShadow(
-                              color: C.emergencyDark.withValues(alpha: pressed ? .3 + .25 * v : .45),
-                              blurRadius: pressed ? 14 + 20 * v : 26,
-                              offset: Offset(0, pressed ? 3 : 12),
+                              color: C.emergencyDark.withValues(alpha: down ? .18 : .30),
+                              blurRadius: down ? 10 : 22,
+                              offset: Offset(0, down ? 4 : 12),
                             ),
                           ],
                         ),
-                        child: ClipOval(
-                          child: Stack(alignment: Alignment.center, children: [
-                            // Slow light sheen sweeping around the dome while idle.
-                            if (!pressed)
-                              Positioned.fill(
-                                child: Transform.rotate(
-                                  angle: t * 2 * math.pi,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      gradient: SweepGradient(colors: [
-                                        Colors.white.withValues(alpha: 0),
-                                        Colors.white.withValues(alpha: .16),
-                                        Colors.white.withValues(alpha: 0),
-                                        Colors.white.withValues(alpha: 0),
-                                      ], stops: const [0, .08, .18, 1]),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            // Glossy highlight on the top half (glass dome look).
-                            Positioned(
-                              top: 8, left: 26, right: 26,
-                              child: Container(
-                                height: 86,
-                                decoration: BoxDecoration(
-                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(100), bottom: Radius.circular(70)),
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [Colors.white.withValues(alpha: pressed ? .18 : .38), Colors.white.withValues(alpha: 0)],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            // Bottom inner shade for depth.
-                            Positioned.fill(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.center,
-                                    end: Alignment.bottomCenter,
-                                    colors: [Colors.black.withValues(alpha: 0), Colors.black.withValues(alpha: .16)],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            // Thin inner rim.
-                            Positioned.fill(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white.withValues(alpha: .28), width: 2),
-                                ),
-                              ),
-                            ),
-                            Column(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(pressed ? Icons.emergency_share : Icons.warning_amber_rounded, size: 46, color: Colors.white,
-                                  shadows: const [Shadow(color: Color(0x44000000), blurRadius: 6, offset: Offset(0, 2))]),
-                              const SizedBox(height: 2),
-                              Transform.scale(
-                                scale: pressed ? pop : 1,
-                                child: Text(
-                                  pressed ? '$remaining' : 'SOS',
-                                  style: const TextStyle(fontSize: 48, height: 1.05, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2,
-                                      shadows: [Shadow(color: Color(0x66000000), blurRadius: 10, offset: Offset(0, 3))]),
-                                ),
-                              ),
-                            ]),
-                          ]),
-                        ),
                       ),
                     ),
-                  ),
+                    AnimatedPositioned(
+                      duration: Duration(milliseconds: down ? 70 : 160),
+                      curve: Curves.easeOut,
+                      left: 0, right: 0,
+                      top: down ? lip - 1 : 0,
+                      child: Container(
+                        height: face,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: pressed
+                                ? [Color.lerp(const Color(0xFFE23B3E), const Color(0xFFC81E28), v)!, Color.lerp(const Color(0xFFD5292F), const Color(0xFFB8141F), v)!]
+                                : const [Color(0xFFEC4346), Color(0xFFDA2F33)],
+                          ),
+                          border: Border.all(color: Colors.white.withValues(alpha: .10), width: 1),
+                        ),
+                        alignment: Alignment.center,
+                        child: pressed
+                            ? Transform.scale(
+                                scale: pop,
+                                child: Text('$remaining',
+                                    style: const TextStyle(fontSize: 76, height: 1, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -1)),
+                              )
+                            : const Text('SOS',
+                                style: TextStyle(fontSize: 56, height: 1, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 3)),
+                      ),
+                    ),
+                  ]),
                 ),
               ]),
             );
@@ -399,71 +271,49 @@ class _SosButtonState extends State<_SosButton> with SingleTickerProviderStateMi
       ),
     );
   }
-
-  Widget _ring({required double size, required Color color}) => IgnorePointer(
-        child: Container(width: size, height: size, decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
-      );
-
-  // Ripple: a thin outline with a faint fill, fading as it grows.
-  Widget _pulse({required double size, required double fade}) => IgnorePointer(
-        child: Container(
-          width: size, height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: C.emergency.withValues(alpha: .07 * fade),
-            border: Border.all(color: C.emergency.withValues(alpha: .45 * fade), width: 2),
-          ),
-        ),
-      );
 }
 
-/// Hold progress drawn as 3 segments (one per second), with a glowing head dot.
+/// Hold progress: one continuous arc on the bezel, with small ticks marking each second.
 class _HoldRingPainter extends CustomPainter {
   _HoldRingPainter({required this.v, required this.pressed});
   final double v;
   final bool pressed;
 
-  static const _segments = 3;
-  static const _gap = 14 * math.pi / 180;
-  static const _stroke = 9.0;
+  static const _seconds = 3;
+  static const _stroke = 8.0;
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
     final r = size.width / 2 - _stroke / 2;
     final rect = Rect.fromCircle(center: c, radius: r);
-    const seg = 2 * math.pi / _segments;
-    const sweep = seg - _gap;
+    const start = -math.pi / 2;
 
-    final track = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _stroke
-      ..strokeCap = StrokeCap.round
-      ..color = C.emergency.withValues(alpha: pressed ? .16 : .10);
-    final fill = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _stroke
-      ..strokeCap = StrokeCap.round;
-
-    for (var i = 0; i < _segments; i++) {
-      final start = -math.pi / 2 + i * seg + _gap / 2;
-      canvas.drawArc(rect, start, sweep, false, track);
-      final p = (v * _segments - i).clamp(0.0, 1.0);
-      if (p > 0) {
-        fill.color = Color.lerp(C.emergency, C.emergencyDark, (i + p) / _segments)!;
-        canvas.drawArc(rect, start, sweep * p, false, fill);
-      }
+    canvas.drawCircle(
+      c, r,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = _stroke
+        ..color = C.emergency.withValues(alpha: pressed ? .14 : .08),
+    );
+    if (v > 0) {
+      canvas.drawArc(
+        rect, start, 2 * math.pi * v, false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = _stroke
+          ..strokeCap = StrokeCap.round
+          ..color = C.emergencyDark,
+      );
     }
-
-    // Glowing head that leads the fill.
-    if (pressed && v > 0 && v < 1) {
-      final i = (v * _segments).floor().clamp(0, _segments - 1);
-      final p = (v * _segments - i).clamp(0.0, 1.0);
-      final a = -math.pi / 2 + i * seg + _gap / 2 + sweep * p;
-      final head = c + Offset(math.cos(a), math.sin(a)) * r;
-      canvas.drawCircle(head, 11, Paint()..color = C.emergency.withValues(alpha: .25)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
-      canvas.drawCircle(head, 7, Paint()..color = Colors.white);
-      canvas.drawCircle(head, 4, Paint()..color = C.emergencyDark);
+    // Second ticks: thin white notches across the track.
+    final tick = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 2.5;
+    for (var i = 0; i < _seconds; i++) {
+      final a = start + i * 2 * math.pi / _seconds;
+      final dir = Offset(math.cos(a), math.sin(a));
+      canvas.drawLine(c + dir * (r - _stroke / 2 - 1), c + dir * (r + _stroke / 2 + 1), tick);
     }
   }
 
@@ -488,6 +338,7 @@ class _SosFlowState extends State<SosFlow> {
   bool addressLoading = false;
   String? locError;
   bool sending = false;
+  String? sentCode; // report ID returned by the server, shown on the "terkirim" step
   String? error;
   final otherCtrl = TextEditingController();
 
@@ -536,7 +387,7 @@ class _SosFlowState extends State<SosFlow> {
     }
     setState(() { sending = true; error = null; });
     try {
-      await Api.sendSos(
+      sentCode = await Api.sendSos(
         nik: session.nik!, lat: place!.lat, lng: place!.lng, category: category ?? 'Darurat', photoB64: photoB64,
         description: isOther && otherText.isNotEmpty ? otherText : null,
         address: address,
@@ -655,7 +506,10 @@ class _SosFlowState extends State<SosFlow> {
         ),
         _foot(
           primary: PrimaryButton(label: 'Lanjutkan ke Konfirmasi', icon: Icons.arrow_forward, onPressed: typeReady ? () { FocusScope.of(context).unfocus(); setState(() => step = 2); } : null),
-          secondary: SecondaryButton(label: 'Kembali', onPressed: () => setState(() => step = 0)),
+          secondary: Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: SecondaryButton(label: 'Kembali', onPressed: () => setState(() => step = 0)),
+          ),
         ),
       ]);
 
@@ -847,6 +701,7 @@ class _SosFlowState extends State<SosFlow> {
   // Shared with the citizen report flow (widgets/sent_view.dart) so both confirmations look the same.
   Widget _doneStep() => SentView(
         title: 'Laporan Diterima',
+        code: sentCode,
         message: 'Panggilan darurat Anda sudah masuk ke petugas. Tetap tenang dan berada di tempat aman.',
         onDone: () => Navigator.pop(context),
       );

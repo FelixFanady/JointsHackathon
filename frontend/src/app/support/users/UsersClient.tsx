@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Select from "@/components/Select";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUsers, type DirectoryUser } from "@/components/useUsers";
@@ -120,16 +121,15 @@ export default function UsersClient() {
 
       <div className="toolbar">
         <input className="input search grow" placeholder="Cari nama, daerah, atau HP…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cari pengguna" />
-        <select className="input select-sm" value={regionCity} onChange={(e) => { setRegionCity(e.target.value); setRegionDistrict(""); }} aria-label="Filter kota atau kabupaten">
-          <option value="">Semua daerah</option>
-          {cities.map(([c, n]) => <option key={c} value={c}>{c} ({n})</option>)}
-          {unknownRegion > 0 && <option value="__none">Daerah belum diketahui ({unknownRegion})</option>}
-        </select>
+        <Select className="select-sm" value={regionCity} onChange={(v) => { setRegionCity(v); setRegionDistrict(""); }} aria-label="Filter kota atau kabupaten"
+          options={[
+            { value: "", label: "Semua daerah" },
+            ...cities.map(([c, n]) => ({ value: c, label: c, hint: n })),
+            ...(unknownRegion > 0 ? [{ value: "__none", label: "Daerah belum diketahui", hint: unknownRegion }] : []),
+          ]} />
         {regionCity && regionCity !== "__none" && (
-          <select className="input select-sm" value={regionDistrict} onChange={(e) => setRegionDistrict(e.target.value)} aria-label="Filter kecamatan">
-            <option value="">Semua kecamatan</option>
-            {districtsOf(regionCity).map(([d, n]) => <option key={d} value={d}>{d} ({n})</option>)}
-          </select>
+          <Select className="select-sm" value={regionDistrict} onChange={setRegionDistrict} aria-label="Filter kecamatan"
+            options={[{ value: "", label: "Semua kecamatan" }, ...districtsOf(regionCity).map(([d, n]) => ({ value: d, label: d, hint: n }))]} />
         )}
         <button className="icon-btn refresh" onClick={reload} aria-label="Muat ulang" title="Muat ulang"><span className={`msym ${loading ? "spin" : ""}`}>refresh</span></button>
         <button className="btn primary" onClick={() => openCompose(regionCity && regionCity !== "__none" ? "region" : "all")} disabled={users.length === 0}>

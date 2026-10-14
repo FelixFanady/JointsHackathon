@@ -70,7 +70,23 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (hasProfile) {
-    const err = await saveProfile(nik, profile);
+    // Profile data is encrypted (lib/crypto.ts). Without the right key the save cannot run at all;
+    // say so plainly instead of a raw 500.
+    let err: string | null;
+    try {
+      err = await saveProfile(nik, profile);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[citizens] profile save failed for ${nik}:`, msg);
+      return NextResponse.json(
+        {
+          error: msg.includes("DATA_ENCRYPTION_KEY")
+            ? "Data profil tidak bisa disimpan: kunci enkripsi (DATA_ENCRYPTION_KEY) belum dipasang di server."
+            : "Data profil tidak bisa disimpan: data lama tidak bisa dibuka dengan kunci enkripsi yang dipasang.",
+        },
+        { status: 503 },
+      );
+    }
     if (err) return NextResponse.json({ error: err }, { status: 500 });
     // Address changed -> work out its district/city on the street map (best-effort, after responding).
     // A map pin from the picker is exact; otherwise the text is geocoded.

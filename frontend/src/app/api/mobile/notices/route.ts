@@ -27,6 +27,8 @@ export async function POST(req: Request) {
     message: n.message,
     level: n.level,
     ...(n.kind ? { kind: n.kind } : {}), // absent on old notices: the app then guesses from the words
+    ...(n.photo_url ? { photo_url: n.photo_url } : {}), // shown as a big picture in the phone notification
+    ...(n.report_id ? { report_id: n.report_id } : {}),
     created_at: n.created_at,
     by: n.by,
   }));

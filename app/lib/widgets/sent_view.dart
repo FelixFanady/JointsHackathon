@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme.dart';
 
 /// "Sent" confirmation used after BOTH an SOS and a citizen report, so they look the same:
-/// a large green check that pops in, a title, a short reassurance, and a full-width "Selesai".
+/// a large green check that pops in, a title, a short reassurance, the report ID, and a full-width "Selesai".
 class SentView extends StatelessWidget {
-  const SentView({super.key, required this.title, required this.message, required this.onDone});
+  const SentView({super.key, required this.title, required this.message, required this.onDone, this.code});
   final String title;
   final String message;
   final VoidCallback onDone;
+  /// Report ID ("LW-…" / "SOS-…"); hidden when the server did not return one.
+  final String? code;
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +32,10 @@ class SentView extends StatelessWidget {
             Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center, style: const TextStyle(color: C.muted, fontSize: 16)),
+            if (code != null) ...[
+              const SizedBox(height: 20),
+              ReportIdBox(code: code!),
+            ],
           ]),
         ),
       ),
@@ -41,4 +48,48 @@ class SentView extends StatelessWidget {
       ),
     ]);
   }
+}
+
+/// "ID Laporan  LW-1A2B3C4D  [Salin]" — the same ID Support and Admin see in the dashboard.
+class ReportIdBox extends StatefulWidget {
+  const ReportIdBox({super.key, required this.code});
+  final String code;
+  @override
+  State<ReportIdBox> createState() => _ReportIdBoxState();
+}
+
+class _ReportIdBoxState extends State<ReportIdBox> {
+  bool copied = false;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.code));
+    HapticFeedback.selectionClick();
+    setState(() => copied = true);
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) setState(() => copied = false);
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+        decoration: BoxDecoration(color: C.card, borderRadius: BorderRadius.circular(16), boxShadow: shadowSm, border: Border.all(color: C.field)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            const Text('ID Laporan', style: TextStyle(fontSize: 12, color: C.muted, fontWeight: FontWeight.w600)),
+            Text(widget.code, style: const TextStyle(fontFamily: 'monospace', fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: .5)),
+          ]),
+          const SizedBox(width: 12),
+          TextButton.icon(
+            onPressed: _copy,
+            icon: Icon(copied ? Icons.check : Icons.copy_rounded, size: 16),
+            label: Text(copied ? 'Tersalin' : 'Salin'),
+            style: TextButton.styleFrom(
+              foregroundColor: C.primary,
+              backgroundColor: C.primaryTint,
+              shape: const StadiumBorder(),
+              textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ),
+        ]),
+      );
 }

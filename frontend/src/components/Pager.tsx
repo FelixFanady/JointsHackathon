@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Select from "./Select";
 
 /** Page sizes offered everywhere ("Tampilkan 10 / 20 / 30 / 40 / 50"). */
 export const PAGE_SIZES = [10, 20, 30, 40, 50] as const;
@@ -61,9 +62,7 @@ export default function Pager({
     <nav className="pager" aria-label={`Navigasi halaman ${label}`}>
       <label className="pager-size">
         Tampilkan
-        <select className="input" value={size} onChange={(e) => setSize(Number(e.target.value))} aria-label="Jumlah per halaman">
-          {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <Select value={size} onChange={setSize} aria-label="Jumlah per halaman" options={PAGE_SIZES.map((s) => ({ value: s, label: String(s) }))} />
         per halaman
       </label>
       <span className="pager-info">{from}–{to} dari {total} {label}</span>

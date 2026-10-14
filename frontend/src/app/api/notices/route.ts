@@ -25,6 +25,7 @@ type Batch = {
   recipients: number;
   to_names: string[];
   target_label: string | null;
+  photo_url: string | null;
 };
 
 function toBatches(rows: Notice[]): Batch[] {
@@ -36,7 +37,7 @@ function toBatches(rows: Notice[]): Batch[] {
       b = {
         id: key, title: n.title, message: n.message, level: n.level, kind: n.kind ?? null, created_at: n.created_at,
         by: n.by, by_username: n.by_username ?? null, by_role: n.by_role ?? null, source: n.source ?? "manual",
-        to_all: false, recipients: 0, to_names: [], target_label: n.target_label ?? null,
+        to_all: false, recipients: 0, to_names: [], target_label: n.target_label ?? null, photo_url: n.photo_url ?? null,
       };
       m.set(key, b);
     }

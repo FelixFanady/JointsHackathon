@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Select from "@/components/Select";
 import { useReports } from "@/components/useReports";
 import ReportDetail from "@/components/ReportDetail";
-import { KIND_LABEL, VIEW_STATUS_LABEL, timeAgo, viewStatus } from "@/lib/util";
+import { KIND_LABEL, VIEW_STATUS_LABEL, reportCode, timeAgo, viewStatus } from "@/lib/util";
 import type { Report } from "@/lib/types";
 import Pager, { usePaged } from "@/components/Pager";
 
@@ -82,7 +83,7 @@ export default function ReportsClient() {
         (kind === "all" || r.kind === kind) &&
         (!city || (city === "__none" ? !r.region : r.region?.city === city)) &&
         (!district || r.region?.district === district) &&
-        (!needle || `${r.category} ${r.reporter_name} ${r.description ?? ""} ${r.address ?? ""} ${r.region?.label ?? ""} ${r.region?.village ?? ""}`.toLowerCase().includes(needle)),
+        (!needle || `${reportCode(r)} ${r.category} ${r.reporter_name} ${r.description ?? ""} ${r.address ?? ""} ${r.region?.label ?? ""} ${r.region?.village ?? ""}`.toLowerCase().includes(needle)),
     );
   }, [reports, status, kind, q, city, district]);
 
@@ -113,6 +114,7 @@ export default function ReportsClient() {
     <button key={r.id} className={`rcard ${r.id === selId ? "sel" : ""}`} onClick={() => setSelId(r.id)}>
       <div className="row">
         <div className="l">
+          <span className="rid mono">{reportCode(r)}</span>
           <span className={`badge ${r.kind}`}>{KIND_LABEL[r.kind]}</span>
           <span className={`badge ${viewStatus(r)}`}>{VIEW_STATUS_LABEL[viewStatus(r)]}</span>
           {r.ai_verdict && <span className="badge ai"><span className="msym xs">auto_awesome</span>AI: {r.ai_verdict.verdict}</span>}
@@ -166,17 +168,16 @@ export default function ReportsClient() {
             <button key={k} role="tab" aria-selected={kind === k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>{label}</button>
           ))}
         </div>
-        <input className="input search grow" placeholder="Cari kategori, pelapor, alamat, daerah…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cari laporan" />
-        <select className="input select-sm" value={city} onChange={(e) => { setCity(e.target.value); setDistrict(""); }} aria-label="Filter kota atau kabupaten">
-          <option value="">Semua daerah</option>
-          {cities.map(([c, n]) => <option key={c} value={c}>{c} ({n})</option>)}
-          {unknownRegion > 0 && <option value="__none">Daerah belum diketahui ({unknownRegion})</option>}
-        </select>
+        <input className="input search grow" placeholder="Cari ID laporan, kategori, pelapor, alamat, daerah…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cari laporan" />
+        <Select className="select-sm" value={city} onChange={(v) => { setCity(v); setDistrict(""); }} aria-label="Filter kota atau kabupaten"
+          options={[
+            { value: "", label: "Semua daerah" },
+            ...cities.map(([c, n]) => ({ value: c, label: c, hint: n })),
+            ...(unknownRegion > 0 ? [{ value: "__none", label: "Daerah belum diketahui", hint: unknownRegion }] : []),
+          ]} />
         {city && city !== "__none" && (
-          <select className="input select-sm" value={district} onChange={(e) => setDistrict(e.target.value)} aria-label="Filter kecamatan">
-            <option value="">Semua kecamatan</option>
-            {districts.map(([d, n]) => <option key={d} value={d}>{d} ({n})</option>)}
-          </select>
+          <Select className="select-sm" value={district} onChange={setDistrict} aria-label="Filter kecamatan"
+            options={[{ value: "", label: "Semua kecamatan" }, ...districts.map(([d, n]) => ({ value: d, label: d, hint: n }))]} />
         )}
         <button className={`btn ghost sm ${grouped ? "on" : ""}`} onClick={() => setGrouped((g) => !g)} aria-pressed={grouped} title="Kelompokkan laporan per kecamatan">
           <span className="msym sm">{grouped ? "stack" : "inbox"}</span>{grouped ? "Per daerah" : "Daftar"}

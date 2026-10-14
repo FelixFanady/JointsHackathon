@@ -4,6 +4,8 @@ import { bad, coords, cleanText, maskPii, rateLimit, requireCitizen, storePhoto 
 import { recordLogin, recordLocation } from "@/lib/citizenActivity";
 import { enqueue, kickQueue } from "@/lib/aiQueue";
 import { resolveReportRegion } from "@/lib/reportRegion";
+import { reportCode } from "@/lib/util";
+import { instantCrimeAlert, isInstantAlert } from "@/lib/crimeAlert";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +27,7 @@ export async function POST(req: Request) {
   // One person = one SOS per 10 minutes, so a single user cannot inflate the "15 people" counter.
   const since = new Date(Date.now() - 10 * 60_000).toISOString();
   const { data: dup } = await db().from("reports").select("id").eq("kind", "sos").eq("nik", c.nik).gte("created_at", since).limit(1);
-  if (dup?.length) return NextResponse.json({ id: dup[0].id, duplicate: true });
+  if (dup?.length) return NextResponse.json({ id: dup[0].id, code: reportCode({ id: dup[0].id, kind: "sos" }), duplicate: true });
 
   const photo = await storePhoto(b?.photo);
   if (photo === "invalid") return bad("Foto tidak valid (JPEG/PNG, maks 2,5 MB).");
@@ -50,10 +52,14 @@ export async function POST(req: Request) {
   // notify by recency and show each user's area. Best-effort, never blocks.
   void recordLogin(c.nik);
   void recordLocation(c.nik, pos.lat, pos.lng);
+  // SOS "Penjambretan": warn citizens within 2 km right away (not verified yet, says so), with the photo.
+  if (isInstantAlert(category)) {
+    after(() => instantCrimeAlert({ id: data.id, category, lat: pos.lat, lng: pos.lng, address: cleanText(b?.address, 200) || null, photo_url: photo, nik: c.nik }));
+  }
   // AI + BMKG check in the background (after the response is sent): auto-alert only if both confirm.
   // Goes through the AI queue, so a busy AI retries later instead of skipping the check.
   after(async () => { await enqueue(data.id, "triage"); await kickQueue(); });
   // Street address + kecamatan/kota for the console (groups reports by area). Background, best-effort.
   after(() => resolveReportRegion({ id: data.id, lat: pos.lat, lng: pos.lng, address: cleanText(b?.address, 200) || null }));
-  return NextResponse.json({ id: data.id });
+  return NextResponse.json({ id: data.id, code: reportCode({ id: data.id, kind: "sos" }) });
 }

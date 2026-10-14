@@ -30,6 +30,8 @@ export type Notice = {
   by_role?: string | null;
   target_label?: string; // who it went to, in words ("Semua warga", "Kota Bandung", "Radius 5 km dari laporan")
   source?: "manual" | "report" | "auto"; // Notifikasi page | report panel | automatic AI alert
+  report_id?: string; // the report this alert is about
+  photo_url?: string; // the reporter's photo, shown in the phone notification (instant crime alerts)
 };
 
 /** Who sent it, recorded on every row for the notification log. */
@@ -42,7 +44,7 @@ export const clean = (v: unknown, max: number) =>
 
 export async function sendNotices(
   targets: { to: string; to_name: string | null }[],
-  n: { title: string; message: string; level: NoticeLevel; kind: NoticeKind; target_label?: string; source?: Notice["source"] } & NoticeSender,
+  n: { title: string; message: string; level: NoticeLevel; kind: NoticeKind; target_label?: string; source?: Notice["source"]; report_id?: string; photo_url?: string | null } & NoticeSender,
 ): Promise<string | null> {
   const now = new Date();
   const stamp = String(now.getTime()).padStart(13, "0");
@@ -64,6 +66,8 @@ export async function sendNotices(
       by_role: n.by_role ?? null,
       ...(n.target_label ? { target_label: n.target_label } : {}),
       source: n.source ?? "manual",
+      ...(n.report_id ? { report_id: n.report_id } : {}),
+      ...(n.photo_url ? { photo_url: n.photo_url } : {}),
     };
     return { key: id, value, updated_at: now.toISOString() };
   });

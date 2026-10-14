@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
@@ -283,6 +284,18 @@ class Notifier {
         : n.level == 'warning'
             ? '⚠️ ${n.title}'
             : n.title;
+    // A photo (instant crime alert) is shown big when the notification is expanded; the text stays
+    // readable underneath. No photo, or it cannot be downloaded quickly -> the normal text style.
+    final photo = await _photoBytes(n.photoUrl);
+    final StyleInformation style = photo != null
+        ? BigPictureStyleInformation(
+            ByteArrayAndroidBitmap(photo),
+            largeIcon: ByteArrayAndroidBitmap(photo),
+            contentTitle: title,
+            summaryText: n.message.split('\n').first,
+            hideExpandedLargeIcon: true,
+          )
+        : BigTextStyleInformation(n.message);
     await _plugin.show(
       _idFor(n.id),
       title,
@@ -306,11 +319,25 @@ class Notifier {
           // the police siren ~3.6 s. Opening or swiping the notification stops it.
           onlyAlertOnce: true,
           autoCancel: true,
-          styleInformation: BigTextStyleInformation(n.message),
+          styleInformation: style,
         ),
         iOS: const DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true),
       ),
     );
+  }
+
+  /// Download a notification photo: https/http only, at most 2.5 MB, 6 s. Any problem -> null (text only).
+  static Future<Uint8List?> _photoBytes(String? url) async {
+    if (url == null || url.isEmpty) return null;
+    final u = Uri.tryParse(url);
+    if (u == null || (u.scheme != 'https' && u.scheme != 'http')) return null;
+    try {
+      final r = await http.get(u).timeout(const Duration(seconds: 6));
+      if (r.statusCode != 200 || r.bodyBytes.length < 100 || r.bodyBytes.length > 2500000) return null;
+      return r.bodyBytes;
+    } catch (_) {
+      return null;
+    }
   }
 }
 

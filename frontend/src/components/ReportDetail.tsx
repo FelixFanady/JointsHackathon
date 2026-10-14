@@ -4,7 +4,8 @@ import { useState } from "react";
 import AiInsight from "./AiInsight";
 import NotifyPanel from "./NotifyPanel";
 import { setStatus } from "./useReports";
-import { KIND_LABEL, VIEW_STATUS_LABEL, formatDateTime, maskNik, viewStatus } from "@/lib/util";
+import { KIND_LABEL, VIEW_STATUS_LABEL, formatDateTime, maskNik, reportCode, viewStatus } from "@/lib/util";
+import CopyId from "./CopyId";
 import type { Report } from "@/lib/types";
 
 export default function ReportDetail({ report, onChanged, onClose }: { report: Report; onChanged: () => void; onClose: () => void }) {
@@ -33,6 +34,7 @@ export default function ReportDetail({ report, onChanged, onClose }: { report: R
         <button className="icon-btn" onClick={onClose} aria-label="Tutup detail"><span className="msym">close</span></button>
       </div>
       <h2 style={{ fontSize: 20 }}>{report.category}</h2>
+      <CopyId code={reportCode(report)} />
       {/* Two columns on wide screens: report + AI + decision on the left, alerting on the right. */}
       <div className={`detail-cols${report.status === "valid" ? " has-side" : ""}`}>
       <div className="col-main">

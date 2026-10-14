@@ -12,6 +12,15 @@ export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
 }
 
+/**
+ * Report ID shown to citizens, Support and Admin: "LW-1A2B3C4D" (laporan warga) or "SOS-1A2B3C4D".
+ * Derived from the report's database id, so every report (old ones too) has one and it never changes.
+ * The mobile app uses the same rule (app/lib/theme.dart reportCode) — keep them identical.
+ */
+export function reportCode(r: { id: string; kind: string }): string {
+  return `${r.kind === "sos" ? "SOS" : "LW"}-${r.id.replace(/[^0-9a-zA-Z]/g, "").slice(0, 8).toUpperCase()}`;
+}
+
 export function maskNik(nik: string | null): string {
   if (!nik) return "-";
   return `${nik.slice(0, 6)}••••••${nik.slice(-4)}`;

@@ -1,5 +1,5 @@
 import { db } from "@/lib/supabase";
-import { KIND_LABEL, VIEW_STATUS_LABEL, timeAgo, viewStatus } from "@/lib/util";
+import { KIND_LABEL, VIEW_STATUS_LABEL, reportCode, timeAgo, viewStatus } from "@/lib/util";
 
 export const dynamic = "force-dynamic";
 
@@ -50,10 +50,11 @@ export default async function AdminHome() {
         <div className="table-wrap">
           {recent?.length ? (
             <table className="table">
-              <thead><tr><th>Jenis</th><th>Kategori</th><th>Pelapor</th><th>Status</th><th>Waktu</th></tr></thead>
+              <thead><tr><th>ID Laporan</th><th>Jenis</th><th>Kategori</th><th>Pelapor</th><th>Status</th><th>Waktu</th></tr></thead>
               <tbody>
                 {recent.map((r) => (
                   <tr key={r.id}>
+                    <td className="mono">{reportCode(r)}</td>
                     <td><span className={`badge ${r.kind}`}>{KIND_LABEL[r.kind as "sos" | "report"]}</span></td>
                     <td>{r.category}</td>
                     <td>{r.reporter_name}</td>

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Report } from "@/lib/types";
 import type { DirectoryUser } from "@/components/useUsers";
-import { timeAgo } from "@/lib/util";
+import { reportCode, timeAgo } from "@/lib/util";
 
 export type SosNotif = {
   id: string;
@@ -259,7 +259,7 @@ export default function EmergencyNotifications({
                       <strong>{n.name}</strong>
                       <small>{timeAgo(n.created_at)}</small>
                     </div>
-                    <div className="cat">{n.category}</div>
+                    <div className="cat">{n.category} <span className="rid mono">{reportCode({ id: n.id, kind: "sos" })}</span></div>
                     <div className="meta">
                       <span><span className="msym xs">location_on</span>{n.area ?? `${n.lat.toFixed(3)}, ${n.lng.toFixed(3)}`}</span>
                       <span><span className="msym xs">schedule</span>Login {n.last_login ? timeAgo(n.last_login) : "—"}</span>

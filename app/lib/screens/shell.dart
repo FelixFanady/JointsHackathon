@@ -5,6 +5,7 @@ import '../api.dart';
 import '../theme.dart';
 import 'home.dart';
 import 'map_screen.dart';
+import 'nearby.dart';
 import 'reports.dart';
 
 class Shell extends StatefulWidget {
@@ -21,8 +22,9 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      HomeScreen(onOpenMap: () => goTo(2)),
+      HomeScreen(onOpenNearby: () => goTo(2)),
       const ReportsScreen(),
+      const NearbyScreen(),
       const MapScreen(),
     ];
     return Scaffold(
@@ -35,7 +37,7 @@ class _ShellState extends State<Shell> {
             child: const Icon(Icons.shield, size: 20, color: Colors.white),
           ),
           const SizedBox(width: 12),
-          Text(['Beranda', 'Laporan', 'Peta'][index]),
+          Text(['Beranda', 'Laporan', 'Sekitar', 'Peta'][index]),
         ]),
         actions: [
           IconButton(onPressed: _profile, icon: const CircleAvatar(radius: 18, backgroundColor: C.primaryDark, child: Icon(Icons.person, size: 20, color: Colors.white))),
@@ -71,6 +73,7 @@ class _ShellState extends State<Shell> {
         items: const [
           (Icons.home_outlined, Icons.home_rounded, 'Beranda'),
           (Icons.campaign_outlined, Icons.campaign, 'Lapor'),
+          (Icons.radar_outlined, Icons.radar, 'Sekitar'),
           (Icons.map_outlined, Icons.map, 'Peta'),
         ],
       ),

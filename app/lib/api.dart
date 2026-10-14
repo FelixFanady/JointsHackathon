@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auto_refresh.dart';
+import 'theme.dart' show reportCode;
 
 /// Backend base URL. Override with: flutter run --dart-define=API_BASE=https://your-domain
 /// Defaults target a Next.js dev server on the host machine (Android emulator uses 10.0.2.2).
@@ -59,6 +60,21 @@ class MyReport {
   final String? description, address, verifiedBy;
 }
 
+/// "Status Wilayah" set by Support/Admin, e.g. SIAGA BENCANA GEMPA for Aceh. level: waspada | siaga | awas.
+class AreaStatus {
+  AreaStatus.fromJson(Map<String, dynamic> j)
+      : id = j['id'] as String,
+        title = j['title'] as String,
+        level = (j['level'] as String?) ?? 'waspada',
+        hazard = (j['hazard'] as String?) ?? 'lainnya',
+        scopeLabel = (j['scope_label'] as String?) ?? '',
+        message = (j['message'] as String?) ?? '',
+        createdAt = j['created_at'] as String,
+        endsAt = j['ends_at'] as String?;
+  final String id, title, level, hazard, scopeLabel, message, createdAt;
+  final String? endsAt;
+}
+
 /// A notification sent by Support. level: info | warning | danger.
 class AppNotice {
   AppNotice.fromJson(Map<String, dynamic> j)
@@ -67,10 +83,13 @@ class AppNotice {
         message = j['message'] as String,
         level = (j['level'] as String?) ?? 'info',
         kind = j['kind'] as String?,
+        photoUrl = j['photo_url'] as String?,
         createdAt = j['created_at'] as String;
   final String id, title, message, level, createdAt;
   /// bencana | kriminal | umum, chosen by Support. Null on notices sent before the web had it.
   final String? kind;
+  /// Reporter's photo attached to an instant crime alert (shown as a big picture).
+  final String? photoUrl;
 }
 
 class Api {
@@ -114,12 +133,21 @@ class Api {
   static Future<String> identify(String nik) async => (await _post('/api/mobile/identify', {'nik': nik}))['name'] as String;
 
   // After a successful send every list/map refreshes at once (see auto_refresh.dart).
-  static Future<void> sendSos({required String nik, required double lat, required double lng, required String category, String? description, String? photoB64, String? address}) async {
-    await _post('/api/mobile/sos', {'nik': nik, 'lat': lat, 'lng': lng, 'category': category, 'description': description, 'photo': photoB64, 'address': address});
+  // Both return the new report's ID ("SOS-…" / "LW-…") for the confirmation screen.
+  static Future<String?> sendSos({required String nik, required double lat, required double lng, required String category, String? description, String? photoB64, String? address}) async {
+    final j = await _post('/api/mobile/sos', {'nik': nik, 'lat': lat, 'lng': lng, 'category': category, 'description': description, 'photo': photoB64, 'address': address});
     notifyReportsChanged();
+    return _codeOf(j, 'sos');
   }
 
-  static Future<void> sendReport({
+  static String? _codeOf(Map<String, dynamic> j, String kind) {
+    final c = j['code'];
+    if (c is String && c.isNotEmpty) return c;
+    final id = j['id'];
+    return id is String && id.isNotEmpty ? reportCode(id, kind) : null;
+  }
+
+  static Future<String?> sendReport({
     required String nik,
     required double lat,
     required double lng,
@@ -129,11 +157,18 @@ class Api {
     String? photoB64,
     String? address,
   }) async {
-    await _post('/api/mobile/report', {
+    final j = await _post('/api/mobile/report', {
       'nik': nik, 'lat': lat, 'lng': lng, 'category': category,
       'description': description, 'danger': danger, 'photo': photoB64, 'address': address,
     });
     notifyReportsChanged();
+    return _codeOf(j, 'report');
+  }
+
+  /// Status Wilayah active for the whole country plus the province at (lat, lng). Without a location: country-wide only.
+  static Future<List<AreaStatus>> areaStatus(String nik, {double? lat, double? lng}) async {
+    final j = await _post('/api/mobile/status', {'nik': nik, if (lat != null && lng != null) 'lat': lat, if (lat != null && lng != null) 'lng': lng});
+    return ((j['statuses'] as List?) ?? []).map((e) => AreaStatus.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   static Future<List<MyReport>> myReports(String nik) async {
