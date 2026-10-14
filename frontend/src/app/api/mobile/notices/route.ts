@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { bad, coords, requireCitizen, rateLimit } from "@/lib/mobile";
+import { requireFaceSession } from "@/lib/face";
 import { noticesFor } from "@/lib/citizenNotice";
 import { recordNoticeFetch } from "@/lib/citizenActivity";
 
@@ -18,6 +19,8 @@ export async function POST(req: Request) {
   const f = await requireCitizen(b?.nik);
   if (f.error) return f.error;
   const c = f.citizen;
+  const fs = requireFaceSession(req, c.nik);
+  if (fs) return fs;
 
   const sinceMs = typeof b?.since === "string" ? Date.parse(b.since) : NaN;
   const all = await noticesFor(c.nik);

@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./supabase";
+import { pushNotice } from "./push";
 
 /**
  * Notifications from Support to citizens, stored WITHOUT new tables: one row per
@@ -75,6 +76,20 @@ export async function sendNotices(
     const { error } = await db().from("settings").upsert(rows.slice(i, i + 500), { onConflict: "key" });
     if (error) return error.message;
   }
+  // The notice is stored (the app's polling will find it). Also push it so a phone with the app
+  // closed gets it right away. Best-effort and a no-op until FIREBASE_SERVICE_ACCOUNT is set.
+  await pushNotice(
+    {
+      title: n.title,
+      message: n.message,
+      level: n.level,
+      kind: n.kind,
+      created_at: now.toISOString(),
+      photo_url: n.photo_url ?? null,
+      report_id: n.report_id ?? null,
+    },
+    rows.map((r) => ({ to: r.value.to, id: r.key })),
+  );
   return null;
 }
 

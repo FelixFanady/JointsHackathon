@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'notifier.dart';
+import 'push.dart';
 import 'screens/login.dart';
 import 'screens/shell.dart';
 import 'theme.dart';
@@ -22,6 +25,9 @@ Future<void> main() async {
     await Notifier.init();
     session.addListener(Notifier.sync);
     Notifier.sync();
+    // Push while the app is closed (no-op until Firebase is configured).
+    session.addListener(Push.sync);
+    unawaited(Push.sync());
   });
 }
 

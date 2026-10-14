@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/supabase";
 import { bad, requireCitizen, rateLimit } from "@/lib/mobile";
+import { requireFaceSession } from "@/lib/face";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export async function POST(req: Request) {
   const f = await requireCitizen(b?.nik);
   if (f.error) return f.error;
   const c = f.citizen;
+  const fs = requireFaceSession(req, c.nik);
+  if (fs) return fs;
   const { data, error } = await db()
     .from("reports")
     .select("id,kind,category,description,address,status,lat,lng,created_at,reviewed_by")

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import 'face_verify.dart';
 
 /// Step 1: NIK entry with the on-screen numpad from the design.
 class LoginScreen extends StatefulWidget {
@@ -37,9 +38,9 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> next() async {
     setState(() { loading = true; error = null; });
     try {
-      final name = await Api.identify(nik);
+      final who = await Api.identify(nik);
       if (!mounted) return;
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ConfirmIdentityScreen(nik: nik, name: name)));
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ConfirmIdentityScreen(nik: nik, name: who.name, faceRegistered: who.faceRegistered)));
     } on ApiException catch (e) {
       error = e.message;
     }
@@ -189,9 +190,11 @@ class _Numpad extends StatelessWidget {
 }
 
 /// Step 2: "Masuk sebagai <name>" with "Bukan Anda?" to change NIK.
+/// Step 3: face -- enrol once when no profile photo exists yet, otherwise verify against it.
 class ConfirmIdentityScreen extends StatelessWidget {
-  const ConfirmIdentityScreen({super.key, required this.nik, required this.name});
+  const ConfirmIdentityScreen({super.key, required this.nik, required this.name, required this.faceRegistered});
   final String nik, name;
+  final bool faceRegistered;
 
   String get initials => name.trim().split(RegExp(r'\s+')).take(2).map((w) => w[0]).join().toUpperCase();
   String get first => name.trim().split(RegExp(r'\s+')).first;
@@ -239,14 +242,22 @@ class ConfirmIdentityScreen extends StatelessWidget {
               ]),
             ),
             const SizedBox(height: 12),
-            const Text('Data kependudukan dicocokkan otomatis untuk penanganan darurat yang cepat dan presisi.',
-                textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: C.muted)),
+            Text(
+                faceRegistered
+                    ? 'Langkah berikutnya: verifikasi wajah dengan foto profil yang terdaftar.'
+                    : 'Belum ada foto wajah. Daftarkan wajah Anda sekali; login berikutnya cukup verifikasi.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: C.muted)),
             const Spacer(),
             PrimaryButton(
-              label: 'Lanjutkan sebagai $first',
-              icon: Icons.arrow_forward,
+              label: faceRegistered ? 'Verifikasi Wajah' : 'Daftarkan Wajah',
+              icon: Icons.face_retouching_natural,
               onPressed: () async {
-                await session.signIn(nik, name);
+                final token = await Navigator.of(context).push<String>(
+                  MaterialPageRoute(builder: (_) => FaceScreen(nik: nik, name: name, enroll: !faceRegistered)),
+                );
+                if (token == null) return; // backed out or not matched: stay here
+                await session.signIn(nik, name, faceToken: token);
                 if (context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);
               },
             ),

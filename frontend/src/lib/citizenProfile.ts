@@ -16,6 +16,8 @@ export type CitizenProfile = {
   email?: string | null;
   phone?: string | null;
   photo?: string | null; // compressed base64 data-URI
+  /** Who set `photo` as the face reference: an admin on the website, or the citizen's own first face enrolment in the app. */
+  face?: { source: "admin" | "self"; enrolled_at: string } | null;
   birth_date?: string | null; // YYYY-MM-DD
   address?: string | null;
   /** Region resolved from `address` via OpenStreetMap; `failed` = looked up, nothing found (don't retry). */

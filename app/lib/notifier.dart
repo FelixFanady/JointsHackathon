@@ -11,9 +11,10 @@ import 'api.dart';
 /// Pulls the notifications Support sends from the web console and shows them as
 /// system notifications that sound + vibrate like an alarm.
 ///
-/// Delivery model: the app polls /api/mobile/notices every [_every] while the app process is
-/// alive (foreground, or backgrounded until Android suspends it). Waking a fully-closed app needs
-/// server push (FCM) which this project does not have yet.
+/// Two delivery paths, deduplicated by notice id:
+///  * push (FCM, see push.dart): wakes the app even when it is closed -> [showFromPush];
+///  * polling: /api/mobile/notices every [_every] while the app process is alive. This is the
+///    fallback when Firebase is not configured or the phone has no Google services.
 /// Every failure is swallowed: a notification problem must never break reporting or SOS.
 class Notifier {
   Notifier._();
@@ -185,6 +186,7 @@ class Notifier {
     _busy = true;
     try {
       final prefs = await SharedPreferences.getInstance();
+      await prefs.reload(); // a push handled in the background isolate may have updated the shown list
       final key = 'notice_since_$nik';
       final shownKey = 'notice_shown_$nik';
       final since = prefs.getString(key);
@@ -221,6 +223,42 @@ class Notifier {
   }
 
   static String _later(String? a, String b) => a == null || _after(b, a) ? b : a;
+
+  /// A notice that arrived by push (FCM), possibly while the app was closed: this runs in a
+  /// background isolate then, where [session] is NOT loaded, so the signed-in NIK comes from
+  /// SharedPreferences. Shares the "already shown" list with [poll], so a notice that arrives by
+  /// both push and polling alerts once.
+  static Future<void> showFromPush(Map<String, dynamic> d) async {
+    try {
+      if (!_supported) return;
+      final id = d['id'] as String?, title = d['title'] as String?, message = d['message'] as String?;
+      if (id == null || title == null || message == null) return;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload(); // another isolate (the app itself) may have written since this one cached
+      final nik = prefs.getString('nik');
+      if (nik == null) return; // signed out: broadcasts must not alert a phone nobody is signed in on
+      final to = d['to'] as String?;
+      if (to != null && to != 'all' && to != nik) return; // meant for someone who used this phone before
+      await init();
+      if (!_ready) return;
+      final shownKey = 'notice_shown_$nik';
+      final shown = (prefs.getStringList(shownKey) ?? const <String>[]).toList();
+      if (shown.contains(id)) return;
+      final n = AppNotice.fromJson({
+        'id': id,
+        'title': title,
+        'message': message,
+        'level': d['level'],
+        'kind': d['kind'],
+        'photo_url': d['photo_url'],
+        'created_at': d['created_at'] ?? DateTime.now().toUtc().toIso8601String(),
+      });
+      if (!await _showSafe(n)) return;
+      shown.add(id);
+      if (shown.length > _maxRemembered) shown.removeRange(0, shown.length - _maxRemembered);
+      await prefs.setStringList(shownKey, shown);
+    } catch (_) {}
+  }
 
   static Future<void> _save(SharedPreferences prefs, String key, String shownKey, List<String> shown, String cursor) async {
     if (shown.length > _maxRemembered) shown.removeRange(0, shown.length - _maxRemembered);

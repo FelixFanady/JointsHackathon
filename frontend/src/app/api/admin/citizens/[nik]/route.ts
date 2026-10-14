@@ -52,9 +52,11 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const v = b.photo;
     if (v === null || v === "") {
       profile.photo = null;
+      profile.face = null; // no photo -> the citizen must enrol their face again in the app
     } else if (typeof v === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(v)) {
       if (v.length > 360000) return NextResponse.json({ error: "Foto terlalu besar. Coba foto lain." }, { status: 400 });
       profile.photo = v;
+      profile.face = { source: "admin", enrolled_at: new Date().toISOString() };
     } else {
       return NextResponse.json({ error: "Foto tidak valid." }, { status: 400 });
     }

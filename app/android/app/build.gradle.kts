@@ -4,6 +4,12 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Firebase config downloaded from the Firebase console. Without it the app still builds and runs
+// (no push while closed; in-app polling keeps working).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.example.siagaku"
     compileSdk = flutter.compileSdkVersion

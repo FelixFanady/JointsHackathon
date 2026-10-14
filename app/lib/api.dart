@@ -18,13 +18,37 @@ String get apiBase {
 }
 
 class ApiException implements Exception {
-  ApiException(this.message, {this.inactive = false});
+  ApiException(this.message, {this.inactive = false, this.code, this.status});
   final String message;
 
   /// The server says this citizen's account was deactivated by an admin (HTTP 403, code "inactive").
   final bool inactive;
+
+  /// Machine-readable reason from the server, e.g. "not_registered", "face_locked", "no_face".
+  final String? code;
+  final int? status;
   @override
   String toString() => message;
+}
+
+/// identify(): who owns this NIK, and whether a reference face (profile photo) already exists.
+class Identity {
+  const Identity(this.name, this.faceRegistered);
+  final String name;
+  final bool faceRegistered;
+}
+
+/// Face check result. The server only ever returns a yes/no and a 0..1 score -- never a photo.
+class FaceResult {
+  FaceResult.fromJson(Map<String, dynamic> j)
+      : match = j['match'] == true,
+        confidence = ((j['confidence'] as num?) ?? 0).toDouble(),
+        token = j['token'] as String?;
+  final bool match;
+  final double confidence;
+
+  /// Face session token, only present when [match] is true.
+  final String? token;
 }
 
 class NearbyItem {
@@ -105,15 +129,28 @@ class Api {
     return (j['notices'] as List).map((e) => AppNotice.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  static Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
+  /// Tell the server which phone (FCM token) belongs to this citizen, so notices reach it while the app is closed.
+  static Future<void> registerPushToken(String nik, String token, {bool unregister = false}) async {
+    await _post('/api/mobile/push-token', {'nik': nik, 'token': token, if (unregister) 'action': 'unregister'});
+  }
+
+  static Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body, {Duration timeout = const Duration(seconds: 25)}) async {
     try {
       final r = await http
-          .post(Uri.parse('$apiBase$path'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body))
-          .timeout(const Duration(seconds: 25));
+          .post(Uri.parse('$apiBase$path'),
+              headers: {
+                'Content-Type': 'application/json',
+                // Proves this device passed the face check (required by the server when FACE_AUTH_ENFORCE=1).
+                if (session.faceToken != null) 'x-face-token': session.faceToken!,
+              },
+              body: jsonEncode(body))
+          .timeout(timeout);
       return _decode(r);
     } on ApiException catch (e) {
       // Deactivated while signed in: leave the app right away, and tell the login screen why.
       if (e.inactive && session.signedIn) session.forceSignOut(e.message);
+      // Face session missing/expired: sign in again (NIK + face).
+      if (e.code == 'face_required' && session.signedIn) session.forceSignOut(e.message);
       rethrow;
     } catch (_) {
       throw ApiException('Tidak dapat terhubung ke server. Periksa koneksi internet Anda.');
@@ -126,11 +163,24 @@ class Api {
       j = jsonDecode(r.body) as Map<String, dynamic>;
     } catch (_) {}
     if (r.statusCode >= 200 && r.statusCode < 300) return j;
-    throw ApiException((j['error'] as String?) ?? 'Terjadi kesalahan (${r.statusCode}).', inactive: r.statusCode == 403 && j['code'] == 'inactive');
+    final code = j['code'] as String?;
+    throw ApiException((j['error'] as String?) ?? 'Terjadi kesalahan (${r.statusCode}).',
+        inactive: r.statusCode == 403 && code == 'inactive', code: code, status: r.statusCode);
   }
 
-  /// Returns the citizen's name for a NIK.
-  static Future<String> identify(String nik) async => (await _post('/api/mobile/identify', {'nik': nik}))['name'] as String;
+  /// The citizen's name for a NIK, and whether a reference face is already on file.
+  static Future<Identity> identify(String nik) async {
+    final j = await _post('/api/mobile/identify', {'nik': nik});
+    return Identity(j['name'] as String, j['face_registered'] == true);
+  }
+
+  /// Live selfie (JPEG bytes, base64) vs the reference photo on the server.
+  static Future<FaceResult> faceVerify(String nik, String photoB64) async =>
+      FaceResult.fromJson(await _post('/api/mobile/face/verify', {'nik': nik, 'photo': photoB64}, timeout: const Duration(seconds: 40)));
+
+  /// First-time enrolment: only accepted when the NIK has no reference photo yet.
+  static Future<FaceResult> faceEnroll(String nik, String photoB64) async =>
+      FaceResult.fromJson(await _post('/api/mobile/face/enroll', {'nik': nik, 'photo': photoB64}, timeout: const Duration(seconds: 40)));
 
   // After a successful send every list/map refreshes at once (see auto_refresh.dart).
   // Both return the new report's ID ("SOS-…" / "LW-…") for the confirmation screen.
@@ -199,6 +249,7 @@ class Api {
 class Session extends ChangeNotifier {
   String? nik;
   String? name;
+  String? faceToken;
   bool loaded = false;
 
   /// Why the app signed the user out on its own (e.g. account deactivated); shown once on the login screen.
@@ -215,16 +266,20 @@ class Session extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     nik = p.getString('nik');
     name = p.getString('name');
+    faceToken = p.getString('face_token');
     loaded = true;
     notifyListeners();
   }
 
-  Future<void> signIn(String nik, String name) async {
+  /// [faceToken] comes from a successful face verify/enrol (see screens/face_verify.dart).
+  Future<void> signIn(String nik, String name, {String? faceToken}) async {
     final p = await SharedPreferences.getInstance();
     await p.setString('nik', nik);
     await p.setString('name', name);
+    if (faceToken != null) await p.setString('face_token', faceToken);
     this.nik = nik;
     this.name = name;
+    this.faceToken = faceToken;
     notifyListeners();
   }
 
@@ -232,8 +287,10 @@ class Session extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     await p.remove('nik');
     await p.remove('name');
+    await p.remove('face_token');
     nik = null;
     name = null;
+    faceToken = null;
     notifyListeners();
   }
 }
