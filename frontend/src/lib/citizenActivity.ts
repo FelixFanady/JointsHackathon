@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./supabase";
+import { open, seal, tryOpen } from "./crypto";
 import type { Region } from "./geo";
 import { reverseGeocode } from "./geo";
 
@@ -24,16 +25,16 @@ export type CitizenActivity = {
 const PREFIX = "citizen_activity:";
 const keyFor = (nik: string) => `${PREFIX}${nik}`;
 
+/** Encrypt + write one citizen's activity row. */
+async function put(nik: string, value: CitizenActivity, at = new Date().toISOString()): Promise<void> {
+  await db().from("settings").upsert({ key: keyFor(nik), value: seal(value, keyFor(nik)), updated_at: at }, { onConflict: "key" });
+}
+
 /** Record a login (app identify). Best-effort: never throws into the request. */
 export async function recordLogin(nik: string): Promise<void> {
   try {
     const current = await loadActivity(nik);
-    await db()
-      .from("settings")
-      .upsert(
-        { key: keyFor(nik), value: { ...current, last_login: new Date().toISOString() }, updated_at: new Date().toISOString() },
-        { onConflict: "key" },
-      );
+    await put(nik, { ...current, last_login: new Date().toISOString() });
   } catch {
     /* non-fatal — activity tracking must not block login */
   }
@@ -44,12 +45,7 @@ export async function recordNoticeFetch(nik: string): Promise<void> {
   try {
     const current = await loadActivity(nik);
     const now = new Date().toISOString();
-    await db()
-      .from("settings")
-      .upsert(
-        { key: keyFor(nik), value: { ...current, last_login: now, notices_fetched_at: now }, updated_at: now },
-        { onConflict: "key" },
-      );
+    await put(nik, { ...current, last_login: now, notices_fetched_at: now }, now);
   } catch {
     /* non-fatal */
   }
@@ -61,12 +57,7 @@ export async function recordLocation(nik: string, lat: number, lng: number): Pro
   try {
     const current = await loadActivity(nik);
     const now = new Date().toISOString();
-    await db()
-      .from("settings")
-      .upsert(
-        { key: keyFor(nik), value: { ...current, last_lat: lat, last_lng: lng, last_seen_at: now }, updated_at: now },
-        { onConflict: "key" },
-      );
+    await put(nik, { ...current, last_lat: lat, last_lng: lng, last_seen_at: now }, now);
     await resolveActivityRegion(nik);
   } catch {
     /* non-fatal */
@@ -84,20 +75,16 @@ export async function resolveActivityRegion(nik: string): Promise<boolean> {
   const region = await reverseGeocode(a.last_lat, a.last_lng);
   if (!region) {
     // Remember the miss so one bad point (e.g. open sea, service error) doesn't block the queue forever.
-    await db()
-      .from("settings")
-      .upsert({ key: keyFor(nik), value: { ...(await loadActivity(nik)), region_failed: { lat: a.last_lat, lng: a.last_lng } }, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    await put(nik, { ...(await loadActivity(nik)), region_failed: { lat: a.last_lat, lng: a.last_lng } });
     return false;
   }
-  await db()
-    .from("settings")
-    .upsert({ key: keyFor(nik), value: { ...(await loadActivity(nik)), region }, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  await put(nik, { ...(await loadActivity(nik)), region });
   return true;
 }
 
 export async function loadActivity(nik: string): Promise<CitizenActivity> {
   const { data } = await db().from("settings").select("value").eq("key", keyFor(nik)).maybeSingle();
-  return (data?.value ?? {}) as CitizenActivity;
+  return open<CitizenActivity>(data?.value, keyFor(nik)); // throws if encrypted and unreadable: never overwrite with {}
 }
 
 /** Load ALL citizen activity rows in one prefix query. Map nik -> activity. */
@@ -106,7 +93,8 @@ export async function loadAllActivity(): Promise<Record<string, CitizenActivity>
   const { data } = await db().from("settings").select("key,value").like("key", `${PREFIX}%`);
   for (const row of data ?? []) {
     if (typeof row.key === "string" && row.key.startsWith(PREFIX)) {
-      out[row.key.slice(PREFIX.length)] = (row.value ?? {}) as CitizenActivity;
+      const a = tryOpen<CitizenActivity>(row.value, row.key);
+      if (a) out[row.key.slice(PREFIX.length)] = a;
     }
   }
   return out;

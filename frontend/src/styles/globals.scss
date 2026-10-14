@@ -849,3 +849,27 @@ a.icon-btn { display: inline-grid; place-items: center; }
   .switch, .switch .knob, .table tbody tr, .table tbody tr .av { transition: none; }
   .table tbody tr.flash-on, .table tbody tr.flash-off, .switch.busy .knob::after { animation: none; }
 }
+
+/* =======================================================================
+   Slim, integrated scrollbars (single override block -- delete it to restore
+   the browser default). The thumb floats inside the rounded edge instead of
+   a full-height grey rail with arrow buttons.
+   ======================================================================= */
+* { scrollbar-width: thin; scrollbar-color: rgba(20, 33, 61, 0.22) transparent; }
+@supports selector(::-webkit-scrollbar) {
+  * { scrollbar-width: auto; scrollbar-color: auto; }
+  *::-webkit-scrollbar { width: 12px; height: 12px; background: transparent; }
+  *::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  *::-webkit-scrollbar-corner { background: transparent; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(20, 33, 61, 0.22); border-radius: 99px;
+    border: 3px solid transparent; background-clip: padding-box; min-height: 40px;
+    &:hover { background: rgba(20, 33, 61, 0.42); background-clip: padding-box; }
+    &:active { background: rgba(29, 78, 216, 0.6); background-clip: padding-box; }
+  }
+  /* Modal: keep the rail clear of the rounded corners */
+  .overlay .modal::-webkit-scrollbar { width: 14px; }
+  .overlay .modal::-webkit-scrollbar-track { margin: 22px 0; }
+  .overlay .modal::-webkit-scrollbar-thumb { border-width: 4px; }
+}

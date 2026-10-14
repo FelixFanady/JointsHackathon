@@ -9,7 +9,8 @@
     "prod": "next build && next start -H 127.0.0.1 -p 3000",
     "typecheck": "tsc --noEmit",
     "create-admin": "node scripts/create-admin.mjs",
-    "seed-demo": "node scripts/seed-demo.mjs"
+    "seed-demo": "node scripts/seed-demo.mjs",
+    "encrypt-data": "node scripts/encrypt-settings.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.3",

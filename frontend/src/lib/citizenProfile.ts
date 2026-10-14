@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./supabase";
+import { open, seal, tryOpen } from "./crypto";
 import type { Region } from "./geo";
 import { addressUsable, forwardGeocode, reverseDetailed } from "./geo";
 
@@ -32,7 +33,8 @@ export async function loadProfiles(niks: string[]): Promise<Record<string, Citiz
   const { data } = await db().from("settings").select("key,value").in("key", keys);
   for (const row of data ?? []) {
     if (typeof row.key === "string" && row.key.startsWith(PREFIX)) {
-      out[row.key.slice(PREFIX.length)] = (row.value ?? {}) as CitizenProfile;
+      const p = tryOpen<CitizenProfile>(row.value, row.key);
+      if (p) out[row.key.slice(PREFIX.length)] = p;
     }
   }
   return out;
@@ -48,7 +50,8 @@ export async function loadAllProfiles(): Promise<Record<string, CitizenProfile>>
   const { data } = await db().from("settings").select("key,value").like("key", `${PREFIX}%`);
   for (const row of data ?? []) {
     if (typeof row.key === "string" && row.key.startsWith(PREFIX)) {
-      out[row.key.slice(PREFIX.length)] = (row.value ?? {}) as CitizenProfile;
+      const p = tryOpen<CitizenProfile>(row.value, row.key);
+      if (p) out[row.key.slice(PREFIX.length)] = p;
     }
   }
   return out;
@@ -57,7 +60,7 @@ export async function loadAllProfiles(): Promise<Record<string, CitizenProfile>>
 /** Load one citizen's profile (empty object if none saved yet). */
 export async function loadProfile(nik: string): Promise<CitizenProfile> {
   const { data } = await db().from("settings").select("value").eq("key", keyFor(nik)).maybeSingle();
-  return (data?.value ?? {}) as CitizenProfile;
+  return open<CitizenProfile>(data?.value, keyFor(nik)); // throws if encrypted and unreadable: never overwrite with {}
 }
 
 /** Merge a partial profile patch into the stored one. */
@@ -69,7 +72,7 @@ export async function saveProfile(nik: string, patch: CitizenProfile): Promise<s
   }
   const { error } = await db()
     .from("settings")
-    .upsert({ key: keyFor(nik), value: next, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    .upsert({ key: keyFor(nik), value: seal(next, keyFor(nik)), updated_at: new Date().toISOString() }, { onConflict: "key" });
   return error ? error.message : null;
 }
 
