@@ -1,6 +1,6 @@
 import PerformanceTable from "./PerformanceTable";
 import Link from "next/link";
-import { db } from "@/lib/supabase";
+import { db, fetchAll } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Performa Support — SiagaKu Admin" };
@@ -14,7 +14,10 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
 
   const [{ data: staff }, { data: reviewed }, { count: pending }] = await Promise.all([
     db().from("profiles").select("id,full_name,username,unit,active").eq("role", "support"),
-    db().from("reports").select("reviewed_by,status,created_at,reviewed_at").not("reviewed_by", "is", null).gte("reviewed_at", since).limit(20000),
+    fetchAll<{ reviewed_by: string; status: string; created_at: string; reviewed_at: string; id: string }>(
+      (a, b) => db().from("reports").select("id,reviewed_by,status,created_at,reviewed_at").not("reviewed_by", "is", null).gte("reviewed_at", since).order("reviewed_at").order("id").range(a, b),
+      20000,
+    ),
     db().from("reports").select("*", { count: "exact", head: true }).eq("status", "pending"),
   ]);
 

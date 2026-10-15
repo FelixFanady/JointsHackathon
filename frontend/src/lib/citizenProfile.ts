@@ -1,5 +1,5 @@
 import "server-only";
-import { db } from "./supabase";
+import { db, fetchAll } from "./supabase";
 import { open, seal, tryOpen } from "./crypto";
 import type { Region } from "./geo";
 import { addressUsable, forwardGeocode, reverseDetailed } from "./geo";
@@ -34,8 +34,10 @@ export async function loadProfiles(niks: string[]): Promise<Record<string, Citiz
 
 export async function loadAllProfiles(): Promise<Record<string, CitizenProfile>> {
   const out: Record<string, CitizenProfile> = {};
-  const { data } = await db().from("settings").select("key,value").like("key", `${PREFIX}%`);
-  for (const row of data ?? []) {
+  const { data } = await fetchAll<{ key: string; value: unknown }>((a, b) =>
+    db().from("settings").select("key,value").like("key", `${PREFIX}%`).order("key").range(a, b),
+  );
+  for (const row of data) {
     if (typeof row.key === "string" && row.key.startsWith(PREFIX)) {
       const p = tryOpen<CitizenProfile>(row.value, row.key);
       if (p) out[row.key.slice(PREFIX.length)] = p;

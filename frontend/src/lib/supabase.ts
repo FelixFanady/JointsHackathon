@@ -23,3 +23,21 @@ export function anonDb(): SupabaseClient {
   });
   return anon;
 }
+
+
+type Page<T> = { data: T[] | null; error: { message: string } | null };
+
+export async function fetchAll<T>(
+  page: (from: number, to: number) => PromiseLike<Page<T>>,
+  max = 50_000,
+  size = 1000,
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const out: T[] = [];
+  for (let from = 0; from < max; from += size) {
+    const { data, error } = await page(from, Math.min(from + size, max) - 1);
+    if (error) return { data: out, error };
+    out.push(...(data ?? []));
+    if (!data || data.length < size) break;
+  }
+  return { data: out, error: null };
+}

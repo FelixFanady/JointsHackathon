@@ -1,4 +1,4 @@
-import { db } from "@/lib/supabase";
+import { db, fetchAll } from "@/lib/supabase";
 import { loadAllProfiles } from "@/lib/citizenProfile";
 import { lockedNiks } from "@/lib/face";
 import type { Citizen } from "@/lib/types";
@@ -8,15 +8,14 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Pengguna (NIK) — SiagaKu Admin" };
 
 export default async function CitizensPage() {
-  const basePromise = db()
-    .from("citizens")
-    .select("nik,full_name,active,created_at")
-    .order("created_at", { ascending: false })
-    .limit(1000);
+  const basePromise = fetchAll<{ nik: string; full_name: string; active: boolean; created_at: string }>(
+    (a, b) => db().from("citizens").select("nik,full_name,active,created_at").order("created_at", { ascending: false }).order("nik").range(a, b),
+    5000,
+  );
   const allProfilesPromise = loadAllProfiles();
 
   const [{ data }, profiles, locks] = await Promise.all([basePromise, allProfilesPromise, lockedNiks().catch((): Record<string, number> => ({}))]);
-  const base = (data ?? []) as { nik: string; full_name: string; active: boolean; created_at: string }[];
+  const base = data;
   const rows: Citizen[] = base.map((c) => ({ ...c, ...(profiles[c.nik] ?? {}) }));
 
   return (

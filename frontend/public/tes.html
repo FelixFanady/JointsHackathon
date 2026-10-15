@@ -213,6 +213,28 @@
         font-size: 12px;
         color: var(--muted);
       }
+      .cv {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 16px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .cv .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #9ca3af;
+        flex: none;
+      }
+      .cv.ok .dot { background: #16a34a; }
+      .cv.bad .dot { background: #dc2626; }
+      .cv button {
+        margin-left: auto;
+        padding: 4px 10px;
+        font-size: 12px;
+      }
       .sr {
         position: absolute;
         width: 1px;
@@ -230,6 +252,12 @@
           Cocokkan wajah dari webcam dengan foto profil warga di admin. Server
           hanya mengembalikan <b>match</b> dan <b>confidence</b>.
         </p>
+
+        <div id="cv" class="cv" role="status" aria-live="polite">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="cvText">Memeriksa servis CV...</span>
+          <button id="cvBtn" type="button" class="secondary">Cek ulang</button>
+        </div>
 
         <form id="nikForm" novalidate>
           <label for="nik">NIK (16 digit)</label>
@@ -476,6 +504,37 @@
         });
 
         retryBtn.addEventListener("click", resetShot);
+
+        const CV_HINTS = {
+          cloudflare_blocked_403: "diblokir Cloudflare (403). Buat WAF Skip rule / matikan Bot Fight Mode.",
+          cloudflare_origin_521: "Cloudflare tidak bisa menyambung ke server (521). Cek Caddy & port 80.",
+          cloudflare_origin_522: "Server timeout dari Cloudflare (522). Cek firewall VM.",
+          cv_key_mismatch_401: "CV_API_KEY tidak sama dengan di server.",
+          cv_unreachable: "tidak bisa dihubungi (DNS/jaringan).",
+          cv_url_insecure: "CV_SERVICE_URL harus https://.",
+        };
+        async function checkCv() {
+          const box = $("cv"), text = $("cvText");
+          box.className = "cv";
+          text.textContent = "Memeriksa servis CV...";
+          try {
+            const r = await fetch("/api/mobile/face/health", { cache: "no-store" });
+            const d = await r.json().catch(() => ({}));
+            const host = d.host || "servis CV";
+            if (d.ok) {
+              box.className = "cv ok";
+              text.textContent = `${host}: online (${d.ms} ms)`;
+            } else {
+              box.className = "cv bad";
+              text.textContent = `${host}: ${CV_HINTS[d.detail] || `gagal (${d.detail || "HTTP " + r.status})`}`;
+            }
+          } catch (err) {
+            box.className = "cv bad";
+            text.textContent = "Next.js tidak merespons: " + String(err);
+          }
+        }
+        $("cvBtn").addEventListener("click", checkCv);
+        checkCv();
         stopBtn.addEventListener("click", () => {
           stopCam();
           statusEl.className = "status";

@@ -23,20 +23,58 @@ const EMPTY = {
   confirm_password: "",
 };
 
+export type StaffRow = Profile & {
+  face: "exempt" | "registered" | "none";
+  face_at: string | null;
+  face_locked: number;
+};
+
+function FaceBadge({ p }: { p: StaffRow }) {
+  if (p.face === "exempt") return <span className="badge off" title="Akun darurat: dikecualikan dari verifikasi wajah">Dikecualikan</span>;
+  if (p.face === "none") return <span className="badge pending" title="Akan diminta mendaftarkan wajah saat login berikutnya">Belum terdaftar</span>;
+  return (
+    <span className="face-cell">
+      <span className="badge valid" title={p.face_at ? `Terdaftar ${formatDateTime(p.face_at)}` : undefined}>
+        <span className="msym xs">verified</span>Terdaftar
+      </span>
+      {p.face_locked > 0 && <span className="badge false">Terkunci · {p.face_locked} mnt</span>}
+    </span>
+  );
+}
+
 export default function UsersClient({
   initial,
   meId,
 }: {
-  initial: Profile[];
+  initial: StaffRow[];
   meId: string;
 }) {
   const router = useRouter();
   const [role, setRole] = useState<RoleTab>("all");
   const [q, setQ] = useState("");
   const [adding, setAdding] = useState(false);
+  const [resetting, setResetting] = useState<StaffRow | null>(null);
+  const [toast, setToast] = useState("");
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  async function resetFace() {
+    if (!resetting) return;
+    const p = resetting;
+    setBusy(true);
+    setError("");
+    const res = await fetch(`/api/admin/staff/${p.id}/face-reset`, { method: "POST" });
+    setBusy(false);
+    if (!res.ok) {
+      setError((await res.json().catch(() => ({}))).error ?? "Permintaan gagal.");
+      return;
+    }
+    setResetting(null);
+    setToast(`Wajah ${p.full_name} direset. Ia akan diminta mendaftar ulang saat login.`);
+    window.setTimeout(() => setToast(""), 3000);
+    router.refresh();
+  }
 
   const counts = useMemo(
     () => ({
@@ -143,6 +181,7 @@ export default function UsersClient({
                   <th>Peran</th>
                   <th>Unit</th>
                   <th>Status</th>
+                  <th>Wajah</th>
                   <th>Dibuat</th>
                   <th aria-label="Aksi" />
                 </tr>
@@ -181,12 +220,27 @@ export default function UsersClient({
                     </td>
                     <td>{p.unit ?? "-"}</td>
                     <td>
-                      <span className={`badge ${p.active ? "valid" : "off"}`}>
+                      <span className={`state-pill ${p.active ? "on" : "off"}`}>
+                        <i aria-hidden />
                         {p.active ? "Aktif" : "Nonaktif"}
                       </span>
                     </td>
+                    <td><FaceBadge p={p} /></td>
                     <td>{p.created_at ? formatDateTime(p.created_at) : "-"}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      {p.face === "registered" && (
+                        <button
+                          className="icon-btn"
+                          title="Reset wajah (wajib daftar ulang)"
+                          aria-label={`Reset wajah ${p.full_name}`}
+                          onClick={() => {
+                            setError("");
+                            setResetting(p);
+                          }}
+                        >
+                          <span className="msym sm">refresh</span>
+                        </button>
+                      )}
                       {p.role === "support" && (
                         <Link
                           className="icon-btn"
@@ -206,6 +260,22 @@ export default function UsersClient({
         </div>
         <Pager {...paged} label="akun" />
       </div>
+
+      {resetting && (
+        <Modal
+          title="Reset wajah?"
+          sub={`Foto wajah ${resetting.full_name} (${resetting.username}) dihapus dan kunci percobaannya dibuka. Saat login berikutnya ia wajib mendaftarkan wajah lagi. Lakukan hanya jika Anda yakin orangnya benar.`}
+          onClose={() => setResetting(null)}
+        >
+          {error && <div className="alert error" role="alert">{error}</div>}
+          <div className="actions">
+            <button className="btn" onClick={() => setResetting(null)}>Batal</button>
+            <button className="btn danger" disabled={busy} onClick={resetFace}>{busy ? "Mereset…" : "Ya, reset wajah"}</button>
+          </div>
+        </Modal>
+      )}
+
+      {toast && <div className="toast" role="status">{toast}</div>}
 
       {adding && (
         <Modal

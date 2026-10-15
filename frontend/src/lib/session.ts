@@ -3,6 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { db } from "./supabase";
+import { staffFaceVerified } from "./staffFace";
 import type { Profile, Role } from "./types";
 
 export const ACCESS_COOKIE = "sa_access";
@@ -43,10 +44,13 @@ export const getCurrentUser = cache(async (): Promise<Profile | null> => {
 
 type Guard = { user: Profile; error?: undefined } | { user?: undefined; error: NextResponse };
 
-export async function guard(roles: Role[]): Promise<Guard> {
+export async function guard(roles: Role[], opts: { face?: boolean } = {}): Promise<Guard> {
   const user = await getCurrentUser();
   if (!user) return { error: NextResponse.json({ error: "Sesi berakhir. Silakan masuk kembali." }, { status: 401 }) };
   if (!roles.includes(user.role)) return { error: NextResponse.json({ error: "Akses ditolak." }, { status: 403 }) };
+  if (opts.face !== false && !(await staffFaceVerified(user))) {
+    return { error: NextResponse.json({ error: "Verifikasi wajah diperlukan sebelum bertugas.", code: "staff_face_required" }, { status: 403 }) };
+  }
   return { user };
 }
 

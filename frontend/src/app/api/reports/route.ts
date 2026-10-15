@@ -1,6 +1,6 @@
 import { NextResponse, after } from "next/server";
 import { guard } from "@/lib/session";
-import { db } from "@/lib/supabase";
+import { db, fetchAll } from "@/lib/supabase";
 import { loadAiRunning } from "@/lib/aiRunning";
 import { loadReportRegions, reportsInScope } from "@/lib/reportRegion";
 import { inScope, scopeFor } from "@/lib/supportArea";
@@ -19,16 +19,15 @@ export async function GET(req: Request) {
   const status = url.searchParams.get("status");
   const kind = url.searchParams.get("kind");
 
-  let q = db()
-    .from("reports")
-    .select(COLS)
-    .gte("created_at", new Date(Date.now() - hours * 3600_000).toISOString())
-    .order("created_at", { ascending: false })
-    .limit(2000);
-  if (status === "pending" || status === "valid" || status === "false") q = q.eq("status", status);
-  if (kind === "sos" || kind === "report") q = q.eq("kind", kind);
+  const since = new Date(Date.now() - hours * 3600_000).toISOString();
+  const page = (a: number, b: number) => {
+    let q = db().from("reports").select(COLS).gte("created_at", since);
+    if (status === "pending" || status === "valid" || status === "false") q = q.eq("status", status);
+    if (kind === "sos" || kind === "report") q = q.eq("kind", kind);
+    return q.order("created_at", { ascending: false }).order("id").range(a, b);
+  };
 
-  const [{ data, error }, running, regions, scope, queue, reviews] = await Promise.all([q, loadAiRunning(), loadReportRegions(), scopeFor(g.user), loadQueue(), loadAiReviews()]);
+  const [{ data, error }, running, regions, scope, queue, reviews] = await Promise.all([fetchAll(page, 5000), loadAiRunning(), loadReportRegions(), scopeFor(g.user), loadQueue(), loadAiReviews()]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   after(() => sweepAndKick(data ?? [], queue, running));
   return NextResponse.json({

@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "./supabase";
 
 
-const CV_URL = (process.env.CV_SERVICE_URL ?? "http://127.0.0.1:8100").replace(/\/$/, "");
+const CV_URL = (process.env.CV_SERVICE_URL || "https://api-siagaku.felixfanady.com").replace(/\/$/, "");
 
 function cvUrlAllowed(): boolean {
   try {
@@ -28,32 +28,81 @@ export function confidenceOf(similarity: number): number {
 export type CvEnroll = { ok: true; photo_jpeg_b64: string } | { ok: false; reason: string };
 export type CvCompare = { ok: true; similarity: number } | { ok: false; reason: string };
 
+let lastCvError = "";
+
+function describeHttpFailure(r: Response): string {
+  const viaCloudflare = (r.headers.get("server") ?? "").toLowerCase() === "cloudflare";
+  const html = (r.headers.get("content-type") ?? "").includes("text/html");
+  if (viaCloudflare && r.status === 403 && html) return "cloudflare_blocked_403";
+  if (viaCloudflare && r.status >= 520 && r.status <= 530) return `cloudflare_origin_${r.status}`;
+  if (r.status === 401) return "cv_key_mismatch_401";
+  return `cv_http_${r.status}`;
+}
+
+const UA = "SiagaKu-Server/1.0";
+
 export async function cv<T>(path: "/v1/enroll" | "/v1/compare", body: Record<string, string>): Promise<T | null> {
   const key = process.env.CV_API_KEY;
   if (!key) {
+    lastCvError = "cv_api_key_missing";
     console.error("[face] CV_API_KEY is not set");
     return null;
   }
   if (!cvUrlAllowed()) {
+    lastCvError = "cv_url_insecure";
     console.error("[face] CV_SERVICE_URL must be https:// (or http on localhost). Refusing to send faces over plain HTTP.");
     return null;
   }
   try {
     const r = await fetch(`${CV_URL}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-cv-key": key },
+      headers: { "Content-Type": "application/json", "x-cv-key": key, "User-Agent": UA },
       body: JSON.stringify(body),
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     });
     if (!r.ok) {
-      console.error(`[face] CV service ${path} -> HTTP ${r.status}`);
+      lastCvError = describeHttpFailure(r);
+      console.error(`[face] CV service ${CV_URL}${path} -> HTTP ${r.status} (${lastCvError}, cf-ray ${r.headers.get("cf-ray") ?? "-"})`);
       return null;
     }
+    lastCvError = "";
     return (await r.json()) as T;
   } catch (e) {
-    console.error(`[face] CV service ${path} unreachable:`, e instanceof Error ? e.message : e);
+    lastCvError = "cv_unreachable";
+    console.error(`[face] CV service ${CV_URL}${path} unreachable:`, e instanceof Error ? e.message : e);
     return null;
+  }
+}
+
+export function cvUnavailable(): NextResponse {
+  const body: Record<string, string> = {
+    error: "Layanan verifikasi wajah sedang tidak tersedia. Coba lagi nanti.",
+    code: "cv_unavailable",
+  };
+  if (process.env.NODE_ENV !== "production" && lastCvError) body.detail = lastCvError;
+  return NextResponse.json(body, { status: 503 });
+}
+
+export type CvHealth = { ok: boolean; host: string; http: number; detail: string; ms: number };
+
+export async function cvHealth(): Promise<CvHealth> {
+  let host = "";
+  try {
+    host = new URL(CV_URL).host;
+  } catch {
+    return { ok: false, host: "", http: 0, detail: "cv_url_invalid", ms: 0 };
+  }
+  if (!cvUrlAllowed()) return { ok: false, host, http: 0, detail: "cv_url_insecure", ms: 0 };
+  const t0 = Date.now();
+  try {
+    const r = await fetch(`${CV_URL}/health`, { cache: "no-store", headers: { "User-Agent": UA }, signal: AbortSignal.timeout(8_000) });
+    const ms = Date.now() - t0;
+    if (!r.ok) return { ok: false, host, http: r.status, detail: describeHttpFailure(r), ms };
+    const j = (await r.json().catch(() => null)) as { ok?: unknown } | null;
+    return { ok: j?.ok === true, host, http: r.status, detail: j?.ok === true ? "ok" : "unexpected_body", ms };
+  } catch {
+    return { ok: false, host, http: 0, detail: "cv_unreachable", ms: Date.now() - t0 };
   }
 }
 

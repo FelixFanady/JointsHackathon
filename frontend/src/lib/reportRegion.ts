@@ -1,5 +1,5 @@
 import "server-only";
-import { db } from "./supabase";
+import { db, fetchAll } from "./supabase";
 import { reverseDetailed } from "./geo";
 import { inScope } from "./supportArea";
 
@@ -20,9 +20,11 @@ const recent = new Map<string, { address: string; region: ReportRegion | null } 
 const spot = (lat: number, lng: number) => `${lat.toFixed(4)},${lng.toFixed(4)}`;
 
 export async function loadReportRegions(): Promise<Map<string, Row>> {
-  const { data } = await db().from("settings").select("key,value").like("key", `${PREFIX}%`);
+  const { data } = await fetchAll<{ key: string; value: Row }>((a, b) =>
+    db().from("settings").select("key,value").like("key", `${PREFIX}%`).order("key").range(a, b),
+  );
   const out = new Map<string, Row>();
-  for (const r of data ?? []) if (typeof r.key === "string") out.set(r.key.slice(PREFIX.length), r.value as Row);
+  for (const r of data) if (typeof r.key === "string") out.set(r.key.slice(PREFIX.length), r.value);
   return out;
 }
 

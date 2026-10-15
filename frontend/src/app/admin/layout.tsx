@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { getCurrentUser } from "@/lib/session";
+import { staffFaceVerified } from "@/lib/staffFace";
 import { ADMIN_NAV } from "@/lib/nav";
 import { NavPendingProvider, PendingArea } from "@/components/NavPending";
 
@@ -8,6 +9,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/support/reports");
+  if (!(await staffFaceVerified(user))) redirect("/verify-face");
 
   return (
     <NavPendingProvider>

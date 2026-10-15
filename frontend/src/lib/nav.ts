@@ -25,11 +25,13 @@ export const ADMIN_NAV: NavEntry[] = [
   { section: "Warga" },
   { href: "/admin/citizens", label: "Pengguna (NIK)", icon: "badge" },
   { href: "/support/users", label: "Pengguna & Daerah", icon: "groups" },
+  { href: "/admin/login-logs/users", label: "Login Logs Pengguna", icon: "login" },
 
   { section: "Tim & Akses" },
   { href: "/admin/users", label: "Users", icon: "shield" },
   { href: "/admin/support", label: "Akun Support", icon: "support_agent" },
   { href: "/admin/performance", label: "Performa Support", icon: "monitoring" },
+  { href: "/admin/login-logs/staff", label: "Login Logs Staf", icon: "vpn_key" },
 
   { section: "Sistem" },
   { href: "/admin/settings", label: "Pengaturan", icon: "tune" },

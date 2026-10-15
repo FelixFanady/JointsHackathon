@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { bad, rateLimit, requireCitizen } from "@/lib/mobile";
 import { loadProfile, saveProfile } from "@/lib/citizenProfile";
-import { cv, issueFaceToken, lockedMinutes, lockedResponse, parseSelfie, reasonMessage, type CvEnroll } from "@/lib/face";
+import { cv, cvUnavailable, issueFaceToken, lockedMinutes, lockedResponse, parseSelfie, reasonMessage, type CvEnroll } from "@/lib/face";
+import { logLogin } from "@/lib/loginLog";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,16 @@ export async function POST(req: Request) {
   }
 
   const res = await cv<CvEnroll>("/v1/enroll", { image: photo });
-  if (!res) return bad("Layanan verifikasi wajah sedang tidak tersedia. Coba lagi nanti.", 503);
-  if (!res.ok) return NextResponse.json({ error: reasonMessage(res.reason), code: res.reason }, { status: 422 });
+  const log = (success: boolean, reason?: string) =>
+    logLogin(req, { kind: "citizen", subject: nik, display_name: f.citizen.full_name, method: "face_enroll", success, reason });
+  if (!res) {
+    log(false, "cv_unavailable");
+    return cvUnavailable();
+  }
+  if (!res.ok) {
+    log(false, res.reason);
+    return NextResponse.json({ error: reasonMessage(res.reason), code: res.reason }, { status: 422 });
+  }
 
   try {
     if (await hasPhoto()) {
@@ -45,5 +54,6 @@ export async function POST(req: Request) {
     return bad("Data profil tidak dapat disimpan. Hubungi petugas.", 503);
   }
 
+  log(true, "enrolled");
   return NextResponse.json({ registered: true, match: true, confidence: 1, ...issueFaceToken(nik) });
 }

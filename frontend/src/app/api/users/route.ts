@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/session";
-import { db } from "@/lib/supabase";
+import { db, fetchAll } from "@/lib/supabase";
 import { loadAllProfiles } from "@/lib/citizenProfile";
 import { loadAllActivity } from "@/lib/citizenActivity";
 import { inScope, scopeFor } from "@/lib/supportArea";
@@ -20,7 +20,10 @@ export async function GET(req: Request) {
   const withPhotos = new URL(req.url).searchParams.get("photos") !== "0";
 
   const [{ data: citizens, error }, profiles, activity, scope] = await Promise.all([
-    db().from("citizens").select("nik,full_name,active,created_at").order("full_name", { ascending: true }).limit(2000),
+    fetchAll<{ nik: string; full_name: string; active: boolean; created_at: string }>(
+      (a, b) => db().from("citizens").select("nik,full_name,active,created_at").order("full_name", { ascending: true }).order("nik").range(a, b),
+      5000,
+    ),
     loadAllProfiles(),
     loadAllActivity(),
     scopeFor(g.user),

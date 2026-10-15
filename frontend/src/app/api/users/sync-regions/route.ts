@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/session";
-import { db } from "@/lib/supabase";
+import { db, fetchAll } from "@/lib/supabase";
 import { loadAllActivity, resolveActivityRegion } from "@/lib/citizenActivity";
 import { loadAllProfiles, resolveProfileGeo } from "@/lib/citizenProfile";
 
@@ -14,7 +14,7 @@ export async function POST() {
   if (g.error) return g.error;
 
   const [{ data: citizens }, profiles, activity] = await Promise.all([
-    db().from("citizens").select("nik").eq("active", true).limit(2000),
+    fetchAll<{ nik: string }>((a, b) => db().from("citizens").select("nik").eq("active", true).order("nik").range(a, b), 5000),
     loadAllProfiles(),
     loadAllActivity(),
   ]);

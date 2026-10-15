@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { bad, rateLimit, requireCitizen } from "@/lib/mobile";
 import { loadProfile } from "@/lib/citizenProfile";
 import {
-  MATCH_THRESHOLD, clearFails, confidenceOf, cv, issueFaceToken, lockedMinutes, lockedResponse,
+  MATCH_THRESHOLD, clearFails, confidenceOf, cv, cvUnavailable, issueFaceToken, lockedMinutes, lockedResponse,
   parseSelfie, reasonMessage, recordFail, type CvCompare,
 } from "@/lib/face";
+import { logLogin } from "@/lib/loginLog";
 
 export const dynamic = "force-dynamic";
 
@@ -15,12 +16,17 @@ export async function POST(req: Request) {
   const f = await requireCitizen(b?.nik);
   if (f.error) return f.error;
   const nik = f.citizen.nik;
+  const log = (success: boolean, reason?: string) =>
+    logLogin(req, { kind: "citizen", subject: nik, display_name: f.citizen.full_name, method: "face_verify", success, reason });
 
   const photo = parseSelfie(b?.photo);
   if (!photo) return bad("Foto wajah tidak valid.", 400);
 
   const locked = await lockedMinutes(nik);
-  if (locked) return lockedResponse(locked);
+  if (locked) {
+    log(false, "locked");
+    return lockedResponse(locked);
+  }
 
   let reference: string | null | undefined;
   try {
@@ -33,8 +39,12 @@ export async function POST(req: Request) {
   }
 
   const res = await cv<CvCompare>("/v1/compare", { probe: photo, reference });
-  if (!res) return bad("Layanan verifikasi wajah sedang tidak tersedia. Coba lagi nanti.", 503);
+  if (!res) {
+    log(false, "cv_unavailable");
+    return cvUnavailable();
+  }
   if (!res.ok) {
+    log(false, res.reason);
     if (res.reason === "reference_unusable") {
       return NextResponse.json(
         { error: "Foto profil Anda di sistem tidak bisa dipakai untuk verifikasi. Hubungi petugas untuk memperbarui foto.", code: "reference_unusable" },
@@ -48,8 +58,10 @@ export async function POST(req: Request) {
   const confidence = confidenceOf(res.similarity);
   if (!match) {
     await recordFail(nik);
+    log(false, `face_mismatch ${Math.round(confidence * 100)}%`);
     return NextResponse.json({ match: false, confidence });
   }
   await clearFails(nik);
+  log(true, `match ${Math.round(confidence * 100)}%`);
   return NextResponse.json({ match: true, confidence, ...issueFaceToken(nik) });
 }
