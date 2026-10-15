@@ -10,13 +10,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
 
-    <!-- usesCleartextTraffic: allows the http:// dev backend (10.0.2.2 / LAN IP).
-         Remove it once API_BASE points to an HTTPS domain. -->
     <application
         android:label="SiagaKu"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
             android:exported="true"

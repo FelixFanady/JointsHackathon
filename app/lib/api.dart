@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
@@ -12,7 +11,7 @@ import 'theme.dart' show reportCode;
 String get apiBase {
   const fromEnv = String.fromEnvironment('API_BASE');
   if (fromEnv.isNotEmpty) return fromEnv;
-  return !kIsWeb && Platform.isAndroid ? 'http://10.0.2.2:3000' : 'http://127.0.0.1:3000';
+  return 'https://siagaku.felixfanady.com';
 }
 
 class ApiException implements Exception {
