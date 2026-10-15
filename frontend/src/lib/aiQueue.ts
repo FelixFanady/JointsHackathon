@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "./supabase";
 import { autoTriage } from "./autoTriage";
-import { verifyReports } from "./ai";
+import { hasOpenRouterKey, verifyReports } from "./ai";
 import { loadAiRunning } from "./aiRunning";
 
 
@@ -99,7 +99,7 @@ function scheduleWake(queue: Map<string, QueueJob>) {
 }
 
 export async function sweepAndKick(reports: { id: string; status: string; ai_verdict: unknown; created_at: string }[], queue: Map<string, QueueJob>, running: Set<string>) {
-  if (!process.env.OPENROUTER_API_KEY) return;
+  if (!hasOpenRouterKey()) return;
   const cutoff = Date.now() - SWEEP_HOURS * 3600_000;
   const missing = reports.filter((r) => r.status === "pending" && !r.ai_verdict && Date.parse(r.created_at) >= cutoff && !queue.has(r.id) && !running.has(r.id));
   for (const r of missing.slice(0, 20)) await enqueue(r.id, "triage");

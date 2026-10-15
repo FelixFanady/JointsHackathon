@@ -53,41 +53,161 @@ const DEFAULT_FREE_MODELS = [
 ];
 
 const isFree = (m: string) => m.endsWith(":free") || m === "openrouter/free";
-const MAX_ATTEMPTS = 9;
-const RACE_SIZE = 3;
-const PER_MODEL_TIMEOUT_MS = 9_000;
+const MAX_ATTEMPTS = 5;
+const PER_MODEL_TIMEOUT_MS = 15_000;
+const TOTAL_BUDGET_MS = 45_000;
+
+export function openRouterKeys(): string[] {
+  const raw = process.env.OPENROUTER_API_KEY ?? "";
+  return [...new Set(raw.split(/[,\s]+/).map((k) => k.trim()).filter(Boolean))];
+}
+
+export const hasOpenRouterKey = () => openRouterKeys().length > 0 || geminiKeys().length > 0;
+
+const KEY_MIN_GAP_MS = 3_500;
+const MODEL_MAX_REST_MS = 30 * 60_000;
+
+type AiState = {
+  keyUntil: Map<string, number>;
+  keyLastUse: Map<string, number>;
+  modelUntil: Map<string, number>;
+  modelFails: Map<string, number>;
+  modelWins: Map<string, number>;
+  policyHintShown: boolean;
+  lastGoodGeminiKey: string | null;
+  authFailed: Set<string>;
+  lastGoodKey: string | null;
+  lastGoodModel: string | null;
+  gate: Promise<void>;
+  exhaustedLoggedUntil: number;
+};
+
+const g = globalThis as typeof globalThis & { __siagakuAi?: AiState };
+const S: AiState = (g.__siagakuAi ??= {} as AiState);
+S.keyUntil ??= new Map();
+S.keyLastUse ??= new Map();
+S.modelUntil ??= new Map();
+S.modelFails ??= new Map();
+S.modelWins ??= new Map();
+S.authFailed ??= new Set();
+S.lastGoodKey ??= null;
+S.lastGoodModel ??= null;
+S.gate ??= Promise.resolve();
+S.exhaustedLoggedUntil ??= 0;
+S.policyHintShown ??= false;
+S.lastGoodGeminiKey ??= null;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
+const blocked = (m: Map<string, number>, id: string) => (m.get(id) ?? 0) > Date.now();
+
+function keyLabel(keys: string[], key: string) {
+  return `key#${keys.indexOf(key) + 1}`;
+}
+
+function clock(ts: number) {
+  return new Date(ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
+}
+
+function duration(ms: number) {
+  const m = Math.max(1, Math.round(ms / 60_000));
+  return m >= 60 ? `${Math.floor(m / 60)} jam${m % 60 ? ` ${m % 60} mnt` : ""}` : `${m} mnt`;
+}
+
+function nextKey(keys: string[]): string | null {
+  const free = keys.filter((k) => !blocked(S.keyUntil, k));
+  if (!free.length) return null;
+  if (S.lastGoodKey && free.includes(S.lastGoodKey)) {
+    const idle = Date.now() - (S.keyLastUse.get(S.lastGoodKey) ?? 0);
+    if (idle >= KEY_MIN_GAP_MS) return S.lastGoodKey;
+  }
+  return [...free].sort((a, b) => (S.keyLastUse.get(a) ?? 0) - (S.keyLastUse.get(b) ?? 0))[0];
+}
+
+function soonestKeyReset(keys: string[]): number {
+  return Math.min(...keys.map((k) => S.keyUntil.get(k) ?? 0));
+}
+
+async function withGate<T>(waitMs: number, fn: () => Promise<T>): Promise<{ ran: true; value: T } | { ran: false }> {
+  const prev = S.gate;
+  let release!: () => void;
+  const mine = new Promise<void>((r) => (release = r));
+  S.gate = prev.then(() => mine);
+  const turn = await Promise.race([prev.then(() => true), sleep(waitMs).then(() => false)]);
+  if (!turn) {
+    void prev.then(release);
+    return { ran: false };
+  }
+  try {
+    return { ran: true, value: await fn() };
+  } finally {
+    release();
+  }
+}
+
+type OrError = { message?: string; metadata?: { headers?: Record<string, string> } };
+
+function nextUtcMidnight() {
+  const d = new Date();
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+}
+
+function classify429(err: OrError | undefined, headers: Headers, model: string): { scope: "key" | "model"; until: number; detail: string } {
+  const msg = String(err?.message ?? "");
+  const upstream = /upstream|provider/i.test(msg);
+  const perModel = msg.includes(model) || /limit_rp[md]\//i.test(msg);
+  const perDay = /per-day|per day|daily/i.test(msg);
+  const perMin = /per-min|per minute/i.test(msg);
+  const keyLevel = !upstream && !perModel && (perDay || perMin || /rate limit exceeded/i.test(msg));
+  if (!keyLevel) return { scope: "model", until: Date.now() + 60_000, detail: "" };
+  const reset = Number(err?.metadata?.headers?.["X-RateLimit-Reset"] ?? headers.get("x-ratelimit-reset") ?? "");
+  const fallback = perMin ? Date.now() + 60_000 : perDay ? nextUtcMidnight() : Date.now() + 120_000;
+  const until = Number.isFinite(reset) && reset > Date.now() ? Math.min(reset, Date.now() + 86_400_000) : fallback;
+  return { scope: "key", until, detail: perDay ? "limit harian" : perMin ? "limit per menit" : "rate limit" };
+}
 
 let catalogCache: { at: number; ids: string[] } | null = null;
 
-async function liveFreeModels(key: string): Promise<string[]> {
-  if (catalogCache && Date.now() - catalogCache.at < 600_000) return catalogCache.ids;
+async function fetchFreeIds(url: string, key: string): Promise<string[] | null> {
   try {
-    const r = await fetch("https://openrouter.ai/api/v1/models", {
-      headers: { Authorization: `Bearer ${key}` },
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!r.ok) return catalogCache?.ids ?? [];
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(5_000) });
+    if (!r.ok) return null;
     const j = await r.json();
     const ids: string[] = (j?.data ?? [])
       .filter((m: { id?: string; pricing?: { prompt?: string; completion?: string } }) =>
         typeof m.id === "string" && m.id.endsWith(":free") && Number(m.pricing?.prompt ?? 1) === 0 && Number(m.pricing?.completion ?? 1) === 0)
       .map((m: { id: string }) => m.id);
-    catalogCache = { at: Date.now(), ids };
-    return ids;
+    return ids.length ? ids : null;
   } catch {
-    return catalogCache?.ids ?? [];
+    return null;
   }
+}
+
+async function liveFreeModels(key: string): Promise<string[]> {
+  if (catalogCache && Date.now() - catalogCache.at < 600_000) return catalogCache.ids;
+  const ids =
+    (await fetchFreeIds("https://openrouter.ai/api/v1/models/user", key)) ??
+    (await fetchFreeIds("https://openrouter.ai/api/v1/models", key));
+  if (!ids) return catalogCache?.ids ?? [];
+  catalogCache = { at: Date.now(), ids };
+  return ids;
+}
+
+function modelScore(m: string) {
+  return (S.modelWins.get(m) ?? 0) * 2 - (S.modelFails.get(m) ?? 0);
 }
 
 async function freeModels(key: string): Promise<string[]> {
   const raw = process.env.OPENROUTER_MODELS || process.env.OPENROUTER_MODEL || "";
-  const env = raw.split(",").map((s) => s.trim()).filter(isFree);
   const live = await liveFreeModels(key);
   const liveSet = new Set(live);
-  const builtin = live.length ? DEFAULT_FREE_MODELS.filter((m) => liveSet.has(m)) : DEFAULT_FREE_MODELS;
+  const known = (m: string) => !live.length || liveSet.has(m) || m === "openrouter/free";
+  const env = raw.split(/[;,\s]+/).map((s) => s.trim()).filter(isFree).filter(known);
+  const builtin = DEFAULT_FREE_MODELS.filter(known);
   const rest = live.filter((m) => !builtin.includes(m) && !env.includes(m));
-  const ordered = [...env.filter((m) => m !== "openrouter/free"), ...builtin, ...rest, "openrouter/free"];
-  return [...new Set(ordered)].slice(0, MAX_ATTEMPTS);
+  const ordered = [...new Set([...env.filter((m) => m !== "openrouter/free"), ...builtin, ...rest])];
+  const ranked = ordered.map((m, i) => ({ m, i, s: modelScore(m) })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.m);
+  const sticky = S.lastGoodModel && ranked.includes(S.lastGoodModel) ? [S.lastGoodModel] : [];
+  return [...new Set([...sticky, ...ranked, "openrouter/free"])];
 }
 
 function cleanText(msg: { content?: unknown; reasoning?: unknown } | undefined): string {
@@ -98,72 +218,330 @@ function cleanText(msg: { content?: unknown; reasoning?: unknown } | undefined):
 
 export type AiResult<T> = { ok: true; value: T } | { ok: false; error: string; status: number };
 
-export async function askAiJson<T>(system: string, user: string, accept: (text: string) => T | null): Promise<AiResult<T>> {
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) return { ok: false, error: "OPENROUTER_API_KEY belum diisi di .env.local.", status: 503 };
+type CallOutcome =
+  | { kind: "ok"; text: string; status: number }
+  | { kind: "key"; until: number; status: number; auth: boolean; why: string }
+  | { kind: "model"; until: number; status: number; why: string };
 
-  const models = await freeModels(key);
-  let lastStatus = 0;
-  let authFail = false;
-  let value: T | null = null;
-
-  async function tryModel(model: string, signal: AbortSignal): Promise<T | null> {
-    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+async function callModel(key: string, model: string, system: string, user: string, timeoutMs: number): Promise<CallOutcome> {
+  let r: Response;
+  try {
+    r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "SiagaKu" },
       body: JSON.stringify({
         model,
         temperature: 0.2,
-        max_tokens: 1500,
+        max_tokens: 4000,
+        reasoning: { effort: "low" },
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
         ],
       }),
-      signal,
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    lastStatus = r.status;
-    if (r.status === 401 || r.status === 403) {
-      authFail = true;
-      return null;
-    }
-    if (!r.ok) return null;
-    const j = await r.json();
-    const text = cleanText(j?.choices?.[0]?.message);
-    return text ? accept(text) : null;
+  } catch (e) {
+    const timeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+    return { kind: "model", until: Date.now() + 60_000, status: 0, why: timeout ? "timeout" : "gangguan jaringan" };
   }
 
-  for (let i = 0; i < models.length && value === null && !authFail; i += RACE_SIZE) {
-    const wave = models.slice(i, i + RACE_SIZE);
-    const controllers = wave.map(() => new AbortController());
-    const timers = controllers.map((c) => setTimeout(() => c.abort(), PER_MODEL_TIMEOUT_MS));
-    try {
-      value = await new Promise<T>((resolve, reject) => {
-        let pending = wave.length;
-        wave.forEach((model, k) => {
-          tryModel(model, controllers[k].signal)
-            .then((v) => {
-              if (v !== null) {
-                controllers.forEach((c, j) => j !== k && c.abort());
-                resolve(v);
-              } else if (--pending === 0) {
-                reject(new Error("wave exhausted"));
-              }
-            })
-            .catch(() => {
-              if (--pending === 0) reject(new Error("wave exhausted"));
-            });
-        });
-      });
-    } catch {
-    } finally {
-      timers.forEach(clearTimeout);
+  const j = await r.json().catch(() => null);
+  const err: OrError | undefined = j?.error;
+  const status = r.ok && err ? Number((err as { code?: number }).code) || 502 : r.status;
+  const msg = String(err?.message ?? "");
+
+  if (status === 429) {
+    const c = classify429(err, r.headers, model);
+    return c.scope === "key"
+      ? { kind: "key", until: c.until, status, auth: false, why: c.detail }
+      : { kind: "model", until: c.until, status, why: "penuh di provider" };
+  }
+  if (status === 401) return { kind: "key", until: Date.now() + 600_000, status, auth: true, why: "key ditolak" };
+  if (status === 402) return { kind: "key", until: Date.now() + 3_600_000, status, auth: false, why: "saldo minus" };
+  if (status === 403) {
+    return /moderat|flagged/i.test(msg)
+      ? { kind: "model", until: Date.now(), status, why: "moderasi" }
+      : { kind: "key", until: Date.now() + 600_000, status, auth: true, why: "akses ditolak" };
+  }
+  if (status === 404 && /data policy|privacy|no endpoints/i.test(msg)) {
+    if (!S.policyHintShown) {
+      S.policyHintShown = true;
+      console.warn("[ai] OpenRouter menolak model gratis karena pengaturan privasi akun. Aktifkan 'Enable free endpoints that may publish prompts' di openrouter.ai/settings/privacy untuk SETIAP akun key.");
+    }
+    return { kind: "model", until: Date.now() + 6 * 3_600_000, status, why: "diblokir pengaturan privasi akun" };
+  }
+  if (status === 400 || status === 404) {
+    const paidOnly = /unavailable for free|paid version/i.test(msg);
+    return { kind: "model", until: Date.now() + (paidOnly ? 24 : 6) * 3_600_000, status, why: paidOnly ? "sudah tidak gratis" : "tidak tersedia" };
+  }
+  if (!r.ok || err) return { kind: "model", until: Date.now() + 60_000, status, why: `http_${status}` };
+
+  const text = cleanText(j?.choices?.[0]?.message);
+  if (text) return { kind: "ok", text, status };
+  const cut = j?.choices?.[0]?.finish_reason === "length";
+  return { kind: "model", until: Date.now() + 15 * 60_000, status, why: cut ? "jawaban terpotong (habis untuk reasoning)" : "jawaban kosong" };
+}
+
+function keysExhausted(keys: string[]): { error: string; status: number } {
+  if (keys.every((k) => S.authFailed.has(k))) {
+    return { error: "Semua OPENROUTER_API_KEY ditolak OpenRouter (401/403). Periksa isi key di environment.", status: 503 };
+  }
+  const mins = Math.max(1, Math.ceil((soonestKeyReset(keys) - Date.now()) / 60_000));
+  const wait = mins >= 60 ? `${Math.round(mins / 60)} jam` : `${mins} menit`;
+  return { error: `Semua API key OpenRouter (${keys.length}) sedang kena limit. Coba lagi sekitar ${wait} lagi.`, status: 429 };
+}
+
+function logExhausted(keys: string[]) {
+  const until = soonestKeyReset(keys);
+  if (until <= S.exhaustedLoggedUntil) return;
+  S.exhaustedLoggedUntil = until;
+  console.warn(`[ai] semua key (${keys.length}) kena limit, AI dijeda sampai ${clock(until)} (${duration(until - Date.now())})`);
+}
+
+const allKeysBlocked = (keys: string[]) => keys.every((k) => blocked(S.keyUntil, k));
+
+function restModel(model: string, out: { until: number; status: number }) {
+  if (out.status === 403) return 0;
+  const fails = (S.modelFails.get(model) ?? 0) + 1;
+  S.modelFails.set(model, fails);
+  const backoff = Math.min(60_000 * 2 ** (fails - 1), MODEL_MAX_REST_MS);
+  const until = Math.max(out.until, Date.now() + backoff);
+  S.modelUntil.set(model, until);
+  return until - Date.now();
+}
+
+export async function askAiJson<T>(system: string, user: string, accept: (text: string) => T | null): Promise<AiResult<T>> {
+  const keys = openRouterKeys();
+  const gKeys = geminiKeys();
+  if (!keys.length && !gKeys.length) return { ok: false, error: "OPENROUTER_API_KEY / GEMINI_API_KEY belum diisi di .env.local.", status: 503 };
+  const geminiReady = gKeys.length > 0 && geminiAvailable(gKeys);
+  if (!geminiReady && keys.length && allKeysBlocked(keys)) {
+    logExhausted(keys);
+    return { ok: false, ...keysExhausted(keys) };
+  }
+
+  const deadline = Date.now() + TOTAL_BUDGET_MS;
+  const gated = await withGate(TOTAL_BUDGET_MS - 20_000, async (): Promise<AiResult<T>> => {
+    let or: AiResult<T> | null = null;
+    if (keys.length) {
+      or = await runModels(keys, geminiReady ? deadline - GEMINI_RESERVE_MS : deadline, system, user, accept);
+      if (or.ok) return or;
+    }
+    if (geminiReady) {
+      if (or) console.info(`[ai] OpenRouter gagal (${or.status}), fallback ke Gemini`);
+      const gm = await runGemini(gKeys, deadline, system, user, accept);
+      if (gm.ok || !or) return gm;
+    }
+    return or!;
+  });
+  if (!gated.ran) return { ok: false, error: "AI sedang memproses laporan lain. Laporan dimasukkan ke antrean.", status: 429 };
+  return gated.value;
+}
+
+const GEMINI_RESERVE_MS = 14_000;
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const DEFAULT_GEMINI_MODELS = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest"];
+
+export function geminiKeys(): string[] {
+  return [...new Set((process.env.GEMINI_API_KEY ?? "").split(/[,\s]+/).map((k) => k.trim()).filter(Boolean))];
+}
+
+function geminiModels(): string[] {
+  const env = (process.env.GEMINI_MODELS ?? "").split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
+  return [...new Set([...(env.length ? env : DEFAULT_GEMINI_MODELS)])];
+}
+
+const gSlot = (keys: string[], key: string, model: string) => `gemini:${keys.indexOf(key)}:${model}`;
+
+function geminiAvailable(keys: string[]) {
+  const models = geminiModels();
+  return keys.some((k) => !blocked(S.keyUntil, `gemini:${k}`) && models.some((m) => !blocked(S.modelUntil, gSlot(keys, k, m))));
+}
+
+function nextPacificMidnight() {
+  const now = new Date();
+  const pt = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
+  const offset = now.getTime() - pt.getTime();
+  const mid = new Date(pt);
+  mid.setHours(24, 0, 0, 0);
+  return mid.getTime() + offset;
+}
+
+async function callGemini(key: string, model: string, system: string, user: string, timeoutMs: number): Promise<CallOutcome> {
+  const generationConfig: Record<string, unknown> = { temperature: 0.2, maxOutputTokens: 4000, responseMimeType: "application/json" };
+  if (model.startsWith("gemini-3")) generationConfig.thinkingConfig = { thinkingLevel: "low" };
+  let r: Response;
+  try {
+    r = await fetch(`${GEMINI_BASE}/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: user }] }],
+        generationConfig,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (e) {
+    const timeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+    return { kind: "model", until: Date.now() + 60_000, status: 0, why: timeout ? "timeout" : "gangguan jaringan" };
+  }
+
+  const j = await r.json().catch(() => null);
+  const msg = String(j?.error?.message ?? "");
+  if (r.status === 429) {
+    const perDay = /per ?day|PerDay/i.test(JSON.stringify(j?.error ?? ""));
+    const retry = (j?.error?.details ?? []).map((d: { retryDelay?: string }) => d.retryDelay).find(Boolean);
+    const secs = Number(String(retry ?? "").replace(/s$/, ""));
+    const until = perDay ? nextPacificMidnight() : Date.now() + (Number.isFinite(secs) && secs > 0 ? secs * 1000 : 60_000);
+    return { kind: "model", until, status: 429, why: perDay ? "kuota harian habis" : "kuota per menit habis" };
+  }
+  if (r.status === 400 && /API key not valid|API_KEY_INVALID/i.test(msg)) return { kind: "key", until: Date.now() + 3_600_000, status: 400, auth: true, why: "key tidak valid" };
+  if (r.status === 401 || r.status === 403) return { kind: "key", until: Date.now() + 3_600_000, status: r.status, auth: true, why: "akses ditolak" };
+  if (r.status === 404) return { kind: "model", until: Date.now() + 24 * 3_600_000, status: 404, why: "tidak tersedia" };
+  if (!r.ok) return { kind: "model", until: Date.now() + 60_000, status: r.status, why: `http_${r.status}` };
+
+  const cand = j?.candidates?.[0];
+  const text = ((cand?.content?.parts ?? []) as { text?: string; thought?: boolean }[])
+    .filter((p) => !p.thought && typeof p.text === "string")
+    .map((p) => p.text)
+    .join("")
+    .replace(/```(?:json)?/gi, "");
+  if (text.trim()) return { kind: "ok", text, status: 200 };
+  const reason = j?.promptFeedback?.blockReason ?? cand?.finishReason ?? "";
+  return { kind: "model", until: Date.now() + 5 * 60_000, status: 200, why: reason ? `jawaban kosong (${reason})` : "jawaban kosong" };
+}
+
+async function runGemini<T>(keys: string[], deadline: number, system: string, user: string, accept: (text: string) => T | null): Promise<AiResult<T>> {
+  const models = geminiModels();
+  let lastStatus = 0;
+  const start = Math.max(0, keys.indexOf(S.lastGoodGeminiKey ?? ""));
+  const order = [...keys.slice(start), ...keys.slice(0, start)];
+  for (const model of models) {
+    for (const key of order) {
+      if (blocked(S.keyUntil, `gemini:${key}`)) continue;
+      const slot = gSlot(keys, key, model);
+      if (blocked(S.modelUntil, slot)) continue;
+      const left = deadline - Date.now();
+      if (left < 3_000) return { ok: false, error: "Waktu AI habis. Laporan tetap di antrean.", status: 504 };
+      const label = `gemini key#${keys.indexOf(key) + 1}`;
+      const out = await callGemini(key, model, system, user, Math.min(PER_MODEL_TIMEOUT_MS, left));
+      lastStatus = out.status;
+      if (out.kind === "key") {
+        S.keyUntil.set(`gemini:${key}`, out.until);
+        console.warn(`[ai] ${label} ${out.why} (${out.status}), istirahat ${duration(out.until - Date.now())}`);
+        continue;
+      }
+      if (out.kind === "ok") {
+        const value = accept(out.text);
+        if (value !== null) {
+          S.lastGoodGeminiKey = key;
+          console.info(`[ai] berhasil dengan ${model} via ${label}`);
+          return { ok: true, value };
+        }
+        for (const k of keys) S.modelUntil.set(gSlot(keys, k, model), Date.now() + 5 * 60_000);
+        console.warn(`[ai] ${model} jawaban bukan JSON valid, istirahat 5 mnt`);
+        break;
+      }
+      S.modelUntil.set(slot, out.until);
+      const quota = out.status === 429;
+      console.warn(
+        `[ai] ${model} (${label}) ${out.why}${out.status ? ` (${out.status})` : ""}, istirahat sampai ${clock(out.until)} (${duration(out.until - Date.now())})` +
+          (quota ? " -> coba key Gemini berikutnya" : ""),
+      );
+      if (!quota) {
+        if (out.status === 404) for (const k of keys) S.modelUntil.set(gSlot(keys, k, model), out.until);
+        break;
+      }
     }
   }
-  if (value === null) {
-    return { ok: false, error: `Semua model gratis sedang penuh atau gagal${lastStatus ? ` (${lastStatus})` : ""}. Coba lagi sebentar.`, status: 502 };
+  return { ok: false, error: `Gemini juga sedang penuh atau gagal${lastStatus ? ` (${lastStatus})` : ""}. Laporan tetap di antrean.`, status: lastStatus === 429 ? 429 : 502 };
+}
+
+async function runModels<T>(keys: string[], deadline: number, system: string, user: string, accept: (text: string) => T | null): Promise<AiResult<T>> {
+  if (allKeysBlocked(keys)) {
+    logExhausted(keys);
+    return { ok: false, ...keysExhausted(keys) };
   }
-  return { ok: true, value };
+
+  const models = (await freeModels(nextKey(keys) ?? keys[0])).filter((m) => !blocked(S.modelUntil, m));
+  let lastStatus = 0;
+  let attempts = 0;
+
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
+    if (attempts >= MAX_ATTEMPTS || deadline - Date.now() < 3_000) break;
+    attempts++;
+    let done = false;
+
+    while (!done) {
+      if (allKeysBlocked(keys)) {
+        logExhausted(keys);
+        return { ok: false, ...keysExhausted(keys) };
+      }
+      let key = nextKey(keys);
+      if (!key) {
+        const readyAt = Math.min(...keys.filter((k) => !blocked(S.keyUntil, k)).map((k) => (S.keyLastUse.get(k) ?? 0) + KEY_MIN_GAP_MS));
+        if (readyAt > deadline - 3_000) break;
+        await sleep(readyAt - Date.now());
+        key = nextKey(keys);
+        if (!key) continue;
+      }
+      const gap = (S.keyLastUse.get(key) ?? 0) + KEY_MIN_GAP_MS - Date.now();
+      if (gap > 0) await sleep(gap);
+      const left = deadline - Date.now();
+      if (left < 3_000) break;
+
+      S.keyLastUse.set(key, Date.now());
+      const t0 = Date.now();
+      const out = await callModel(key, model, system, user, Math.min(PER_MODEL_TIMEOUT_MS, left));
+      lastStatus = out.status;
+
+      if (out.kind === "key") {
+        S.keyUntil.set(key, out.until);
+        if (out.auth) S.authFailed.add(key);
+        if (S.lastGoodKey === key) S.lastGoodKey = null;
+        const next = keys.find((k) => !blocked(S.keyUntil, k));
+        console.warn(
+          `[ai] ${keyLabel(keys, key)} ${out.why} (${out.status}), istirahat sampai ${clock(out.until)} (${duration(out.until - Date.now())})` +
+            (next ? ` -> pakai ${keyLabel(keys, next)}` : ""),
+        );
+        continue;
+      }
+
+      done = true;
+      S.authFailed.delete(key);
+      if (out.kind === "ok") {
+        S.lastGoodKey = key;
+        const value = accept(out.text);
+        if (value !== null) {
+          S.modelFails.delete(model);
+          S.modelWins.set(model, (S.modelWins.get(model) ?? 0) + 1);
+          S.lastGoodModel = model;
+          if (attempts > 1) console.info(`[ai] berhasil dengan ${model} via ${keyLabel(keys, key)} (${((Date.now() - t0) / 1000).toFixed(1)} dtk)`);
+          return { ok: true, value };
+        }
+        const rest = restModel(model, { until: Date.now() + 15 * 60_000, status: 0 });
+        console.warn(`[ai] ${model} jawaban bukan JSON valid, istirahat ${duration(rest)} -> ${models[i + 1] ?? "tidak ada model lain"}`);
+      } else {
+        if (S.lastGoodModel === model) S.lastGoodModel = null;
+        const rest = restModel(model, out);
+        console.warn(
+          `[ai] ${model} ${out.why}${out.status ? ` (${out.status})` : ""}` +
+            (rest > 0 ? `, istirahat ${duration(rest)}` : "") +
+            ` -> ${models[i + 1] ?? "tidak ada model lain"}`,
+        );
+      }
+    }
+  }
+
+  if (allKeysBlocked(keys)) {
+    logExhausted(keys);
+    return { ok: false, ...keysExhausted(keys) };
+  }
+  if (!models.length) return { ok: false, error: "Semua model gratis sedang diistirahatkan karena penuh. Laporan tetap di antrean.", status: 503 };
+  return { ok: false, error: `Semua model gratis sedang penuh atau gagal${lastStatus ? ` (${lastStatus})` : ""}. Coba lagi sebentar.`, status: 502 };
 }
 
 const BMKG_BASE = "https://data.bmkg.go.id/DataMKG/TEWS";
@@ -249,7 +627,7 @@ export async function fetchNews(categories: string[], places: string[]): Promise
 }
 
 export async function verifyReports(ids: string[], { track = true }: { track?: boolean } = {}): Promise<AiResult<{ verdict: AiVerdict; quakes: Quake[] }>> {
-  if (!process.env.OPENROUTER_API_KEY) return { ok: false, error: "OPENROUTER_API_KEY belum diisi di .env.local.", status: 503 };
+  if (!hasOpenRouterKey()) return { ok: false, error: "OPENROUTER_API_KEY / GEMINI_API_KEY belum diisi di .env.local.", status: 503 };
   if (track) await markAiRunning(ids);
   try {
     return await runVerify(ids);

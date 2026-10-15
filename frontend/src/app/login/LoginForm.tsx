@@ -7,7 +7,6 @@ export default function LoginForm() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
   const [show, setShow] = useState(false);
   const [caps, setCaps] = useState(false);
   const [error, setError] = useState("");
@@ -31,7 +30,7 @@ export default function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, remember }),
+        body: JSON.stringify({ username, password }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -115,17 +114,6 @@ export default function LoginForm() {
           </span>
         )}
       </div>
-      <label className="remember">
-        <input
-          type="checkbox"
-          checked={remember}
-          onChange={(e) => setRemember(e.target.checked)}
-        />
-        <span>
-          Tetap masuk selama 14 hari
-          <small>Jangan dicentang di komputer bersama.</small>
-        </span>
-      </label>
       <button
         className="btn primary block"
         disabled={busy || !username || !password}

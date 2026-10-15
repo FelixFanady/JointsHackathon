@@ -8,6 +8,8 @@ import { scopeFor } from "@/lib/supportArea";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
   const g = await guard(["admin", "support"]);
   if (g.error) return g.error;

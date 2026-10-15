@@ -9,7 +9,6 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const username = String(body?.username ?? "").trim().toLowerCase();
   const password = String(body?.password ?? "");
-  const remember = Boolean(body?.remember);
   const fail = (reason: string, extra: { display_name?: string; role?: string } = {}) =>
     logLogin(req, { kind: "staff", subject: username || "-", method: "password", success: false, reason, ...extra });
 
@@ -38,6 +37,6 @@ export async function POST(req: Request) {
   logLogin(req, { kind: "staff", subject: username, display_name: profile.full_name, role: profile.role, method: "password", success: true });
   const res = NextResponse.json({ ok: true, role: profile.role });
   res.cookies.set(ACCESS_COOKIE, data.session.access_token, cookieOptions(data.session.expires_in));
-  res.cookies.set(REFRESH_COOKIE, data.session.refresh_token, cookieOptions(remember ? 60 * 60 * 24 * 14 : 60 * 60 * 12));
+  res.cookies.set(REFRESH_COOKIE, data.session.refresh_token, cookieOptions(60 * 60 * 12));
   return res;
 }

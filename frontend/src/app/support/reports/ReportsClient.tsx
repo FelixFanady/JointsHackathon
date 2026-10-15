@@ -29,13 +29,13 @@ const KIND_TABS = [
 
 export default function ReportsClient() {
   const { reports, loading, error, reload } = useReports("hours=720");
-  const [status, setStatus] = useState<string>("all");
+  const [status, setStatus] = useState<string>("pending");
   const [kind, setKind] = useState<string>("all");
   const [q, setQ] = useState("");
   const [selId, setSelId] = useState<string | null>(null);
   const [city, setCity] = useState("");
   const [district, setDistrict] = useState("");
-  const [grouped, setGrouped] = useState(true);
+  const [grouped, setGrouped] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   const pendingRegions = reports.filter((r) => r.region_pending).length;
@@ -71,14 +71,20 @@ export default function ReportsClient() {
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return reports.filter(
-      (r) =>
-        (status === "all" || viewStatus(r) === status) &&
-        (kind === "all" || r.kind === kind) &&
-        (!city || (city === "__none" ? !r.region : r.region?.city === city)) &&
-        (!district || r.region?.district === district) &&
-        (!needle || `${reportCode(r)} ${r.category} ${r.reporter_name} ${r.description ?? ""} ${r.address ?? ""} ${r.region?.label ?? ""} ${r.region?.village ?? ""}`.toLowerCase().includes(needle)),
-    );
+    return reports
+      .filter(
+        (r) =>
+          (status === "all" || viewStatus(r) === status) &&
+          (kind === "all" || r.kind === kind) &&
+          (!city || (city === "__none" ? !r.region : r.region?.city === city)) &&
+          (!district || r.region?.district === district) &&
+          (!needle || `${reportCode(r)} ${r.category} ${r.reporter_name} ${r.description ?? ""} ${r.address ?? ""} ${r.region?.label ?? ""} ${r.region?.village ?? ""}`.toLowerCase().includes(needle)),
+      )
+      .sort(
+        (a, b) =>
+          (a.kind === "sos" ? 0 : 1) - (b.kind === "sos" ? 0 : 1) ||
+          Date.parse(b.created_at) - Date.parse(a.created_at),
+      );
   }, [reports, status, kind, q, city, district]);
 
   const paged = usePaged(rows, [status, kind, q, city, district, grouped]);

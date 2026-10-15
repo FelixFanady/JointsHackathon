@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "./supabase";
 import { loadSettings } from "./settings";
-import { askAiJson, parseJsonObject, verifyReports, type Quake } from "./ai";
+import { askAiJson, hasOpenRouterKey, parseJsonObject, verifyReports, type Quake } from "./ai";
 import { clearAiRunning, markAiRunning } from "./aiRunning";
 import { NEARBY_RADIUS_OPTIONS_KM, QUAKE_CATEGORIES, defaultNoticeText, matchQuake, tsunamiPotential } from "./reportNotice";
 import { loadRegionsFor } from "./reportRegion";
@@ -51,7 +51,7 @@ export type TriageOutcome = "done" | "retry" | "skip";
 export async function autoTriage(reportId: string): Promise<TriageOutcome> {
   let tracked: string[] = [];
   try {
-    if (!process.env.OPENROUTER_API_KEY) return "skip";
+    if (!hasOpenRouterKey()) return "skip";
     const { data } = await db().from("reports").select("id,category,description,address,lat,lng,status,created_at").eq("id", reportId).maybeSingle();
     const r = data as Rpt | null;
     if (!r || r.status !== "pending") return "skip";
