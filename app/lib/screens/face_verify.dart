@@ -5,6 +5,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
@@ -65,7 +66,7 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _deadline?.cancel();
     _stopCamera();
-    _detector.close();
+    if (!kIsWeb) _detector.close();
     super.dispose();
   }
 
@@ -95,7 +96,7 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
     final rest = [_Step.blink, _Step.turn, _Step.smile]..shuffle(Random.secure());
     setState(() {
       _phase = _Phase.starting;
-      _steps = [_Step.center, ...rest.take(2), _Step.hold];
+      _steps = kIsWeb ? const [_Step.hold] : [_Step.center, ...rest.take(2), _Step.hold];
       _stepIndex = 0;
       _okFrames = 0;
       _blinkStage = 0;
@@ -114,7 +115,7 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
         _front!,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
+        imageFormatGroup: kIsWeb ? null : (Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888),
       );
       await cam.initialize();
       if (!mounted) {
@@ -122,14 +123,14 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
         return;
       }
       _cam = cam;
-      await cam.startImageStream(_onFrame);
+      if (!kIsWeb) await cam.startImageStream(_onFrame);
       _deadline?.cancel();
-      _deadline = Timer(_timeLimit, () {
+      _deadline = Timer(kIsWeb ? const Duration(minutes: 2) : _timeLimit, () {
         if (_phase == _Phase.liveness) _fail('Waktu habis. Ikuti petunjuk di layar lalu coba lagi.');
       });
       setState(() {
         _phase = _Phase.liveness;
-        _hint = _hintFor(_steps.first);
+        _hint = kIsWeb ? 'Tatap kamera, lalu tekan Ambil Foto' : _hintFor(_steps.first);
       });
     } on CameraException catch (e) {
       final denied = e.code.contains('Denied') || e.code.contains('denied');
@@ -318,7 +319,7 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
       if (cam.value.isStreamingImages) await cam.stopImageStream();
       final shot = await cam.takePicture();
       final bytes = await shot.readAsBytes();
-      unawaited(File(shot.path).delete().then((_) {}, onError: (_) {}));
+      if (!kIsWeb) unawaited(File(shot.path).delete().then((_) {}, onError: (_) {}));
       b64 = base64Encode(bytes);
     } catch (_) {
       _fail('Gagal mengambil foto. Coba lagi.');
@@ -422,6 +423,10 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
               ),
             ],
             const Spacer(),
+            if (kIsWeb && _phase == _Phase.liveness) ...[
+              PrimaryButton(label: 'Ambil Foto', icon: Icons.photo_camera, onPressed: _captureAndSend),
+              const SizedBox(height: 8),
+            ],
             if (_phase == _Phase.notMatched || _phase == _Phase.error) ...[
               if (_canRetry) PrimaryButton(label: 'Coba Lagi', icon: Icons.refresh, onPressed: _start),
               const SizedBox(height: 8),
@@ -468,7 +473,7 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
   String? get _subtitle {
     final pct = _confidence == null ? null : '${(_confidence! * 100).round()}%';
     return switch (_phase) {
-      _Phase.liveness => 'Langkah ${_stepIndex + 1} dari ${_steps.length}',
+      _Phase.liveness => kIsWeb ? 'Pastikan wajah terang, tanpa masker, dan hanya satu wajah di kamera.' : 'Langkah ${_stepIndex + 1} dari ${_steps.length}',
       _Phase.matched => _enroll ? 'Masuk sebagai ${widget.name}…' : 'Tingkat kecocokan $pct',
       _Phase.notMatched => 'Tingkat kecocokan $pct. Pastikan wajah terang, tanpa masker, lalu coba lagi.',
       _Phase.error => _message,
