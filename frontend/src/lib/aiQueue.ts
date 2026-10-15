@@ -65,6 +65,12 @@ export async function kickQueue(): Promise<void> {
         return;
       }
       const [id, job] = due[0];
+      const { data: cur } = await db().from("reports").select("status,ai_verdict,ai_checked_at").eq("id", id).maybeSingle();
+      const answered = !!cur?.ai_verdict && Date.parse(String(cur.ai_checked_at ?? "")) >= Date.parse(job.at);
+      if (!cur || answered || (job.kind === "triage" && cur.status !== "pending")) {
+        await remove(id);
+        continue;
+      }
       let outcome: "done" | "retry" | "skip";
       if (job.kind === "verify") {
         const res = await verifyReports(job.ids?.length ? job.ids : [id]);

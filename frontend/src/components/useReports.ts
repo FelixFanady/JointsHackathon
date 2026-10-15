@@ -5,6 +5,7 @@ import type { Report } from "@/lib/types";
 
 export function useReports(query: string, intervalMs = 15000) {
   const [reports, setReports] = useState<Report[]>([]);
+  const [areas, setAreas] = useState<string[] | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const alive = useRef(true);
@@ -18,7 +19,7 @@ export function useReports(query: string, intervalMs = 15000) {
       const j = await res.json();
       if (!alive.current) return;
       if (!res.ok) setError(j.error ?? "Gagal memuat laporan.");
-      else { setReports(j.reports); setError(""); }
+      else { setReports(j.reports); setAreas(Array.isArray(j.areas) ? j.areas : null); setError(""); }
     } catch {
       if (alive.current) setError("Tidak dapat terhubung ke server.");
     } finally {
@@ -37,7 +38,7 @@ export function useReports(query: string, intervalMs = 15000) {
     return () => clearInterval(t);
   }, [load, every]);
 
-  return { reports, loading, error, reload: load };
+  return { reports, areas, loading, error, reload: load };
 }
 
 export async function setStatus(ids: string[], status: "valid" | "false"): Promise<string | null> {

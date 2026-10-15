@@ -22,6 +22,7 @@ export default function ReportDetail({ report, onChanged, onClose }: { report: R
   }
 
   const vs = viewStatus(report);
+  const autoValid = report.status === "valid" && !report.reviewed_by;
   const mapsUrl = `https://www.openstreetmap.org/?mlat=${report.lat}&mlon=${report.lng}#map=17/${report.lat}/${report.lng}`;
 
   return (
@@ -66,17 +67,19 @@ export default function ReportDetail({ report, onChanged, onClose }: { report: R
         <div className="review-box" role="status">
           <span className="msym sm">task_alt</span>
           <div>
-            <b>Valid · Perlu ditinjau</b>
-            <p>AI dan data gempa BMKG memvalidasi laporan ini secara otomatis. Periksa apakah penilaian AI sudah benar: konfirmasi Valid kalau benar, atau tandai Palsu kalau AI keliru.</p>
+            <b>Perlu ditinjau</b>
+            <p>{autoValid
+              ? "AI dan data gempa BMKG memvalidasi laporan ini secara otomatis. Periksa apakah penilaian AI sudah benar: konfirmasi Valid kalau benar, atau tandai Palsu kalau AI keliru."
+              : "AI sudah memberi rekomendasi di atas. Periksa alasannya, lalu putuskan: Tandai Valid untuk mengirim peringatan ke warga, atau Tandai Palsu."}</p>
           </div>
         </div>
       )}
       <div className="actions">
         <button className="btn ok" disabled={busy || vs === "valid"} onClick={() => decide("valid")}>
-          <span className="msym sm">check</span> {vs === "review" ? "AI benar · Konfirmasi Valid" : "Tandai Valid"}
+          <span className="msym sm">check</span> {autoValid ? "AI benar · Konfirmasi Valid" : "Tandai Valid"}
         </button>
         <button className="btn danger" disabled={busy || vs === "false"} onClick={() => decide("false")}>
-          <span className="msym sm">close</span> {vs === "review" ? "AI salah · Tandai Palsu" : "Tandai Palsu"}
+          <span className="msym sm">close</span> {autoValid ? "AI salah · Tandai Palsu" : "Tandai Palsu"}
         </button>
       </div>
       {report.ai_review && (
@@ -85,12 +88,10 @@ export default function ReportDetail({ report, onChanged, onClose }: { report: R
           Tinjauan petugas: penilaian AI {report.ai_review.ok ? "benar" : "salah"} · oleh {report.ai_review.by}
         </p>
       )}
-      {report.status === "pending" && (
+      {vs === "pending" && (
         <p className="notify-hint">
           <span className="msym xs">info</span>
-          {report.ai_verdict
-            ? "Pemeriksaan otomatis belum dikonfirmasi AI dan BMKG sekaligus, jadi menunggu keputusan petugas. Tandai Valid untuk mengirim peringatan ke warga."
-            : "Tandai Valid untuk mengirim peringatan ke warga terdekat atau semua warga."}
+          Menunggu hasil AI. Kamu tetap bisa memutuskan sekarang tanpa menunggu: Tandai Valid untuk mengirim peringatan ke warga.
         </p>
       )}
       </div>

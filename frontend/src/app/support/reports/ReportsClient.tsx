@@ -16,7 +16,7 @@ function tally(values: (string | null | undefined)[]): [string, number][] {
 
 const STATUS_TABS = [
   ["all", "Semua"],
-  ["pending", "Menunggu"],
+  ["pending", "Menunggu AI"],
   ["review", "Perlu ditinjau"],
   ["valid", "Valid"],
   ["false", "Palsu"],
@@ -28,8 +28,9 @@ const KIND_TABS = [
 ] as const;
 
 export default function ReportsClient() {
-  const { reports, loading, error, reload } = useReports("hours=720");
-  const [status, setStatus] = useState<string>("pending");
+  const { reports, areas, loading, error, reload } = useReports("hours=720");
+  const [areasOpen, setAreasOpen] = useState(false);
+  const [status, setStatus] = useState<string>("review");
   const [kind, setKind] = useState<string>("all");
   const [q, setQ] = useState("");
   const [selId, setSelId] = useState<string | null>(null);
@@ -134,14 +135,41 @@ export default function ReportsClient() {
 
   return (
     <>
+      {areas !== undefined && (
+        <div className="area-scope" role="note">
+          <span className="msym sm">location_on</span>
+          <div>
+            <b>{areas === null ? "Wilayah yang kamu lihat: Seluruh Indonesia" : `Wilayah yang kamu lihat (${areas.length} provinsi)`}</b>
+            {areas === null ? (
+              <p>Semua laporan dari 38 provinsi tampil di sini.</p>
+            ) : areas.length === 0 ? (
+              <p>Belum ada wilayah yang ditugaskan, jadi tidak ada laporan yang tampil. Minta admin mengatur wilayah tugasmu di Akun Support.</p>
+            ) : (
+              <>
+                <ul className="area-chips">
+                  {(areasOpen ? areas : areas.slice(0, 8)).map((a) => <li key={a}>{a}</li>)}
+                  {areas.length > 8 && (
+                    <li>
+                      <button className="linklike" onClick={() => setAreasOpen((v) => !v)}>
+                        {areasOpen ? "Ringkas" : `+${areas.length - 8} lainnya`}
+                      </button>
+                    </li>
+                  )}
+                </ul>
+                <p>Laporan di luar provinsi ini tidak tampil untukmu. Hubungi admin untuk mengubah wilayah tugas.</p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       <div className="report-stats" aria-label="Ringkasan laporan">
         <button className={`stat ${status === "all" ? "on" : ""}`} onClick={() => setStatus("all")}>
           <b>{counts.all}</b><span>Total laporan</span>
         </button>
-        <button className={`stat warn ${status === "pending" ? "on" : ""}`} onClick={() => setStatus("pending")}>
-          <b>{counts.pending}</b><span><span className="msym xs">pending</span>Menunggu</span>
+        <button className={`stat warn ${status === "pending" ? "on" : ""}`} onClick={() => setStatus("pending")} title="Belum ada hasil AI. Laporan sedang atau akan diperiksa AI otomatis.">
+          <b>{counts.pending}</b><span><span className="msym xs">pending</span>Menunggu AI</span>
         </button>
-        <button className={`stat review ${status === "review" ? "on" : ""}`} onClick={() => setStatus("review")} title="Divalidasi otomatis oleh AI + BMKG, menunggu konfirmasi petugas">
+        <button className={`stat review ${status === "review" ? "on" : ""}`} onClick={() => setStatus("review")} title="AI sudah memberi rekomendasi (atau memvalidasi otomatis bersama BMKG). Petugas perlu memutuskan Valid atau Palsu.">
           <b>{counts.review}</b><span><span className="msym xs">auto_awesome</span>Perlu ditinjau</span>
         </button>
         <button className={`stat ok ${status === "valid" ? "on" : ""}`} onClick={() => setStatus("valid")}>

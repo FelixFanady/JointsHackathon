@@ -67,7 +67,7 @@ export default function AiInsight({
           {working ? (state === "queued" && !busy ? "AI dalam antrean…" : "AI sedang memeriksa…") : verdict ? "Analisis ulang" : label}
         </button>
       </div>
-      {working && (
+      {working && !verdict && (
         <div className="ai-running" role="status">
           <span className="skeleton" style={{ width: "45%", height: 22, borderRadius: 9999 }} />
           <span className="skeleton" style={{ width: "100%", height: 14, marginTop: 10 }} />
@@ -82,8 +82,9 @@ export default function AiInsight({
         <div className="alert warn"><span>AI tidak berhasil memeriksa laporan ini setelah dicoba ulang otomatis selama 2 hari. Tekan <b>Cek dengan AI</b> untuk memasukkannya ke antrean lagi, atau putuskan manual.</span></div>
       )}
       {!working && !verdict && !error && state !== "failed" && <p style={{ fontSize: 14 }}>Tanyakan ke AI apakah kejadian ini tampak valid berdasarkan data laporan.</p>}
-      {!working && verdict && (
+      {verdict && (
         <>
+          {working && <p className="disc" role="status" style={{ marginTop: 0, marginBottom: 8 }}>{state === "queued" && !busy ? "Pemeriksaan ulang ada di antrean. Hasil di bawah adalah penilaian AI terakhir." : "AI sedang memeriksa ulang. Hasil di bawah adalah penilaian AI terakhir."}</p>}
           <span className={`verdict ${verdict.verdict}`}>{VERDICT_LABEL[verdict.verdict]} · {verdict.confidence}%</span>
           <p style={{ marginTop: 8, fontSize: 14 }}>{verdict.summary}</p>
           {verdict.reasons.length > 0 && <ul>{verdict.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>}

@@ -35,10 +35,12 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   after(() => sweepAndKick(data ?? [], queue, running));
   return NextResponse.json({
+    areas: scope === null ? null : [...scope].sort((a, b) => a.localeCompare(b, "id")),
     reports: (data ?? []).filter((r) => scope === null || inScope(scope, regions.get(r.id)?.region?.province)).map((r) => {
       const g = regions.get(r.id);
       const job = queue.get(r.id);
-      const ai_state = running.has(r.id) ? "running" : jobActive(job) ? "queued" : job ? "failed" : null;
+      const stale = !!job && !!r.ai_verdict && Date.parse(String(r.ai_checked_at ?? "")) >= Date.parse(job.at);
+      const ai_state = running.has(r.id) ? "running" : stale ? null : jobActive(job) ? "queued" : job ? "failed" : null;
       return { ...r, ai_running: ai_state === "running" || ai_state === "queued", ai_state, ai_review: reviews.get(r.id) ?? null, region: g?.region ?? null, region_pending: !g };
     }),
   });

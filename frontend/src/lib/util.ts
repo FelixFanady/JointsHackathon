@@ -25,10 +25,11 @@ export const STATUS_LABEL = { pending: "Menunggu", valid: "Valid", false: "Palsu
 export const KIND_LABEL = { sos: "SOS", report: "Laporan" } as const;
 
 export type ViewStatus = "pending" | "review" | "valid" | "false";
-export const VIEW_STATUS_LABEL: Record<ViewStatus, string> = { pending: "Menunggu", review: "Valid · Perlu ditinjau", valid: "Valid", false: "Palsu" };
-export function viewStatus(r: { status: string; reviewed_by?: string | null }): ViewStatus {
+export const VIEW_STATUS_LABEL: Record<ViewStatus, string> = { pending: "Menunggu AI", review: "Perlu ditinjau", valid: "Valid", false: "Palsu" };
+export function viewStatus(r: { status: string; reviewed_by?: string | null; ai_verdict?: unknown }): ViewStatus {
   if (r.status === "valid") return r.reviewed_by ? "valid" : "review";
-  return r.status === "false" ? "false" : "pending";
+  if (r.status === "false") return "false";
+  return r.ai_verdict ? "review" : "pending";
 }
 
 export type Cluster<T extends { lat: number; lng: number }> = { lat: number; lng: number; items: T[] };
