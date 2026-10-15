@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import LoginForm from "./LoginForm";
+import Logo from "@/components/Logo";
 
 export const metadata = { title: "Masuk — SiagaKu Pusat Operasi" };
 
@@ -19,9 +20,7 @@ export default async function LoginPage() {
     <div className="login">
       <aside className="login-side" aria-label="Tentang SiagaKu">
         <div className="login-brand">
-          <div className="logo">
-            <span className="msym">shield</span>
-          </div>
+          <Logo />
           <div>
             <strong>SiagaKu</strong>
             <small>Pusat Operasi</small>
@@ -66,9 +65,7 @@ export default async function LoginPage() {
       <main className="login-main">
         <div className="login-form">
           <div className="login-brand compact" aria-hidden>
-            <div className="logo">
-              <span className="msym">shield</span>
-            </div>
+            <Logo />
             <strong>SiagaKu</strong>
           </div>
           <h1>Masuk</h1>

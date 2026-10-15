@@ -50,6 +50,7 @@ const REASON: Record<string, string> = {
 
 function reasonLabel(r: string | null): string {
   if (!r) return "";
+  if (r.startsWith("step_up ")) return `Verifikasi ulang · ${reasonLabel(r.slice(8))}`;
   const m = /^(match|face_mismatch) (\d+)%$/.exec(r);
   if (m) return m[1] === "match" ? `Cocok · ${m[2]}%` : `Wajah tidak cocok · ${m[2]}%`;
   return REASON[r] ?? r;

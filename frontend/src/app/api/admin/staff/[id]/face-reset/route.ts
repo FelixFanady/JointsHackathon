@@ -8,7 +8,7 @@ type Ctx = { params: Promise<{ id: string }> };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(_req: Request, { params }: Ctx) {
-  const g = await guard(["admin"]);
+  const g = await guard(["admin"], { stepUp: true });
   if (g.error) return g.error;
   const { id } = await params;
   if (!UUID.test(id)) return NextResponse.json({ error: "Akun tidak ditemukan." }, { status: 404 });

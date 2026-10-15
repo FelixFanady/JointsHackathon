@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Select from "@/components/Select";
 import { useReports } from "@/components/useReports";
-import ReportDetail from "@/components/ReportDetail";
+import ReportModal from "@/components/ReportModal";
 import { KIND_LABEL, VIEW_STATUS_LABEL, reportCode, timeAgo, viewStatus } from "@/lib/util";
 import type { Report } from "@/lib/types";
 import Pager, { usePaged } from "@/components/Pager";
@@ -239,29 +239,3 @@ export default function ReportsClient() {
   );
 }
 
-function ReportModal({ report, onChanged, onClose }: { report: Report; onChanged: () => void; onClose: () => void }) {
-  const [leaving, setLeaving] = useState(false);
-  const close = useCallback(() => {
-    setLeaving(true);
-    window.setTimeout(onClose, 160);
-  }, [onClose]);
-
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [close]);
-
-  return (
-    <div className={`overlay${leaving ? " leaving" : ""}`} onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className={`modal lg report-modal${leaving ? " leaving" : ""}`} role="dialog" aria-modal="true" aria-label={`Detail laporan ${report.category}`}>
-        <ReportDetail report={report} onChanged={onChanged} onClose={close} />
-      </div>
-    </div>
-  );
-}

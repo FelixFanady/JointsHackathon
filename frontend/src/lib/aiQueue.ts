@@ -6,11 +6,19 @@ import { loadAiRunning } from "./aiRunning";
 
 
 const PREFIX = "ai_queue:";
-const MAX_ATTEMPTS = 8;
-const BACKOFF_S = [20, 40, 60, 120, 180, 300, 600];
-const SWEEP_HOURS = 6;
+const BACKOFF_S = [20, 40, 60, 120, 300, 600, 900, 1800];
+const GIVE_UP_MS = 48 * 3600_000;
+const SWEEP_HOURS = 48;
 
 export type QueueJob = { kind: "triage" | "verify"; ids?: string[]; at: string; attempts: number; next_at: string; failed?: boolean };
+
+export function jobDead(j: QueueJob): boolean {
+  return !!j.failed && Date.now() - Date.parse(j.at) >= GIVE_UP_MS;
+}
+
+export function jobActive(j: QueueJob | undefined): boolean {
+  return !!j && !jobDead(j);
+}
 
 const keyFor = (id: string) => PREFIX + id;
 
@@ -50,7 +58,7 @@ export async function kickQueue(): Promise<void> {
       const [queue, running] = await Promise.all([loadQueue(), loadAiRunning()]);
       const now = Date.now();
       const due = [...queue.entries()]
-        .filter(([id, j]) => !j.failed && Date.parse(j.next_at) <= now && !running.has(id))
+        .filter(([id, j]) => jobActive(j) && Date.parse(j.next_at) <= now && !running.has(id))
         .sort((a, b) => Date.parse(a[1].at) - Date.parse(b[1].at));
       if (!due.length) {
         scheduleWake(queue);
@@ -68,11 +76,11 @@ export async function kickQueue(): Promise<void> {
         await remove(id);
       } else {
         const attempts = job.attempts + 1;
-        if (attempts >= MAX_ATTEMPTS) {
+        if (Date.now() - Date.parse(job.at) >= GIVE_UP_MS) {
           await save(id, { ...job, attempts, failed: true });
         } else {
           const wait = BACKOFF_S[Math.min(attempts - 1, BACKOFF_S.length - 1)] * 1000;
-          await save(id, { ...job, attempts, next_at: new Date(Date.now() + wait).toISOString() });
+          await save(id, { ...job, attempts, failed: false, next_at: new Date(Date.now() + wait).toISOString() });
         }
       }
     }
@@ -83,7 +91,7 @@ export async function kickQueue(): Promise<void> {
 }
 
 function scheduleWake(queue: Map<string, QueueJob>) {
-  const next = [...queue.values()].filter((j) => !j.failed).map((j) => Date.parse(j.next_at)).filter(Number.isFinite).sort((a, b) => a - b)[0];
+  const next = [...queue.values()].filter(jobActive).map((j) => Date.parse(j.next_at)).filter(Number.isFinite).sort((a, b) => a - b)[0];
   if (wakeTimer) clearTimeout(wakeTimer);
   wakeTimer = null;
   if (next === undefined) return;

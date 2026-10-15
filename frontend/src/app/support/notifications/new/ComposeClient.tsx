@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Select from "@/components/Select";
 import { confirmDialog } from "@/components/Dialog";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useUsers, type DirectoryUser } from "@/components/useUsers";
 import { NOTICE_CATEGORIES, NOTICE_KINDS, type NoticeKindKey, type NoticeLevelKey } from "@/lib/noticeMeta";
@@ -218,7 +219,7 @@ export default function ComposeClient() {
       <aside className="card compose-preview" aria-label="Pratinjau di HP warga">
         <h2>Pratinjau di HP warga</h2>
         <div className={`phone-notif ${level}`}>
-          <div className="pn-hd"><span className="msym xs">shield</span>SiagaKu · sekarang</div>
+          <div className="pn-hd"><Image className="pn-ic" src="/logo.png" alt="" width={16} height={16} />SiagaKu · sekarang</div>
           <b>{level === "danger" ? "🚨 " : level === "warning" ? "⚠️ " : ""}{title || "Judul notifikasi"}</b>
           <p>{message || "Isi pesan akan tampil di sini."}</p>
         </div>

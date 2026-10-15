@@ -13,7 +13,7 @@ async function loadSupport(id: string) {
 }
 
 export async function PATCH(req: Request, { params }: Ctx) {
-  const g = await guard(["admin"]);
+  const g = await guard(["admin"], { stepUp: true });
   if (g.error) return g.error;
   const { id } = await params;
   if (!(await loadSupport(id))) return NextResponse.json({ error: "Akun support tidak ditemukan." }, { status: 404 });
@@ -46,7 +46,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 }
 
 export async function DELETE(_req: Request, { params }: Ctx) {
-  const g = await guard(["admin"]);
+  const g = await guard(["admin"], { stepUp: true });
   if (g.error) return g.error;
   const { id } = await params;
   if (!(await loadSupport(id))) return NextResponse.json({ error: "Akun support tidak ditemukan." }, { status: 404 });

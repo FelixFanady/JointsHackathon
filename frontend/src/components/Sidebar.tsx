@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useNavStart, usePendingPath } from "./NavPending";
+import Logo from "./Logo";
 
 export type NavItem = { href: string; label: string; icon: string; children?: NavItem[] };
 export type NavEntry = NavItem | { section: string };
@@ -87,7 +88,7 @@ export default function Sidebar({
     <aside className={`sidebar${open ? " open" : ""}`}>
       <div className="side-top">
         <div className="brand">
-          <div className="logo"><span className="msym">shield</span></div>
+          <Logo />
           <div>
             <strong>SiagaKu</strong>
             <small>{title}</small>

@@ -7,7 +7,7 @@ import { deleteActivity } from "@/lib/citizenActivity";
 type Ctx = { params: Promise<{ nik: string }> };
 
 export async function PATCH(req: Request, { params }: Ctx) {
-  const g = await guard(["admin"]);
+  const g = await guard(["admin"], { stepUp: true });
   if (g.error) return g.error;
   const { nik } = await params;
   if (!/^\d{16}$/.test(nik)) return NextResponse.json({ error: "NIK tidak valid." }, { status: 400 });
@@ -97,7 +97,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 }
 
 export async function DELETE(_req: Request, { params }: Ctx) {
-  const g = await guard(["admin"]);
+  const g = await guard(["admin"], { stepUp: true });
   if (g.error) return g.error;
   const { nik } = await params;
   if (!/^\d{16}$/.test(nik)) return NextResponse.json({ error: "NIK tidak valid." }, { status: 400 });

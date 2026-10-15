@@ -4,7 +4,7 @@ import { db, fetchAll } from "@/lib/supabase";
 import { loadAiRunning } from "@/lib/aiRunning";
 import { loadReportRegions, reportsInScope } from "@/lib/reportRegion";
 import { inScope, scopeFor } from "@/lib/supportArea";
-import { dropJobs, loadQueue, sweepAndKick } from "@/lib/aiQueue";
+import { dropJobs, jobActive, loadQueue, sweepAndKick } from "@/lib/aiQueue";
 import { loadAiReviews, recordAiReview } from "@/lib/aiReview";
 
 const COLS =
@@ -18,10 +18,14 @@ export async function GET(req: Request) {
   const hours = Math.min(Math.max(Number(url.searchParams.get("hours")) || 24 * 30, 1), 24 * 365);
   const status = url.searchParams.get("status");
   const kind = url.searchParams.get("kind");
+  const id = url.searchParams.get("id");
+  if (id !== null && !/^[0-9a-f-]{8,64}$/i.test(id)) return NextResponse.json({ error: "ID laporan tidak valid." }, { status: 400 });
 
   const since = new Date(Date.now() - hours * 3600_000).toISOString();
   const page = (a: number, b: number) => {
-    let q = db().from("reports").select(COLS).gte("created_at", since);
+    let q = db().from("reports").select(COLS);
+    if (id) q = q.eq("id", id);
+    else q = q.gte("created_at", since);
     if (status === "pending" || status === "valid" || status === "false") q = q.eq("status", status);
     if (kind === "sos" || kind === "report") q = q.eq("kind", kind);
     return q.order("created_at", { ascending: false }).order("id").range(a, b);
@@ -34,7 +38,7 @@ export async function GET(req: Request) {
     reports: (data ?? []).filter((r) => scope === null || inScope(scope, regions.get(r.id)?.region?.province)).map((r) => {
       const g = regions.get(r.id);
       const job = queue.get(r.id);
-      const ai_state = running.has(r.id) ? "running" : job && !job.failed ? "queued" : job?.failed ? "failed" : null;
+      const ai_state = running.has(r.id) ? "running" : jobActive(job) ? "queued" : job ? "failed" : null;
       return { ...r, ai_running: ai_state === "running" || ai_state === "queued", ai_state, ai_review: reviews.get(r.id) ?? null, region: g?.region ?? null, region_pending: !g };
     }),
   });

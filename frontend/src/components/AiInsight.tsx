@@ -79,7 +79,7 @@ export default function AiInsight({
       )}
       {!working && error && <div className="alert error"><span>{error}</span></div>}
       {!working && !verdict && !error && state === "failed" && (
-        <div className="alert warn"><span>AI belum berhasil memeriksa laporan ini karena model AI gratis sedang penuh. Tekan <b>Cek dengan AI</b> untuk mencoba lagi, atau putuskan manual.</span></div>
+        <div className="alert warn"><span>AI tidak berhasil memeriksa laporan ini setelah dicoba ulang otomatis selama 2 hari. Tekan <b>Cek dengan AI</b> untuk memasukkannya ke antrean lagi, atau putuskan manual.</span></div>
       )}
       {!working && !verdict && !error && state !== "failed" && <p style={{ fontSize: 14 }}>Tanyakan ke AI apakah kejadian ini tampak valid berdasarkan data laporan.</p>}
       {!working && verdict && (

@@ -42,7 +42,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 export async function POST(req: Request, { params }: Ctx) {
   const rl = rateLimit(req, "admin-staff-face", 10);
   if (rl) return rl;
-  const g = await guard(["admin"]);
+  const g = await guard(["admin"], { stepUp: true });
   if (g.error) return g.error;
   const { id } = await params;
   const acct = await staffAccount(id);

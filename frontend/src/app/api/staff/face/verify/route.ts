@@ -4,7 +4,7 @@ import { rateLimit } from "@/lib/mobile";
 import {
   MATCH_THRESHOLD, clearFails, confidenceOf, cv, cvUnavailable, lastCvFailure, lockedMinutes, lockedResponse, parseSelfie, reasonMessage, recordFail, type CvCompare,
 } from "@/lib/face";
-import { issueStaffFaceToken, loadStaffFace, needsStaffFace, staffFaceCookie, staffLockId } from "@/lib/staffFace";
+import { issueStaffFaceToken, issueStepUpToken, loadStaffFace, needsStaffFace, staffFaceCookie, staffFaceVerified, staffLockId, stepUpCookie } from "@/lib/staffFace";
 import { logLogin } from "@/lib/loginLog";
 
 export const dynamic = "force-dynamic";
@@ -16,10 +16,18 @@ export async function POST(req: Request) {
   if (g.error) return g.error;
   const user = g.user;
   if (!needsStaffFace(user)) return NextResponse.json({ error: "Akun ini tidak memerlukan verifikasi wajah." }, { status: 400 });
-  const log = (success: boolean, reason?: string) =>
-    logLogin(req, { kind: "staff", subject: user.username, display_name: user.full_name, role: user.role, method: "face_verify", success, reason });
 
   const b = await req.json().catch(() => null);
+  const stepUp = b?.purpose === "step_up";
+  if (stepUp && !(await staffFaceVerified(user))) {
+    return NextResponse.json({ error: "Verifikasi wajah diperlukan sebelum bertugas.", code: "staff_face_required" }, { status: 403 });
+  }
+  const log = (success: boolean, reason?: string) =>
+    logLogin(req, {
+      kind: "staff", subject: user.username, display_name: user.full_name, role: user.role, method: "face_verify", success,
+      reason: stepUp && reason ? `step_up ${reason}` : reason,
+    });
+
   const photo = parseSelfie(b?.photo);
   if (!photo) return NextResponse.json({ error: "Foto wajah tidak valid." }, { status: 400 });
 
@@ -56,12 +64,13 @@ export async function POST(req: Request) {
   if (!match) {
     await recordFail(lockId);
     log(false, `face_mismatch ${Math.round(confidence * 100)}%`);
-    console.warn(`[staff-face] ${user.username} failed face verification`);
+    console.warn(`[staff-face] ${user.username} failed face ${stepUp ? "step-up" : "verification"}`);
     return NextResponse.json({ match: false, confidence });
   }
   await clearFails(lockId);
   log(true, `match ${Math.round(confidence * 100)}%`);
   const out = NextResponse.json({ match: true, confidence });
   out.cookies.set(staffFaceCookie(issueStaffFaceToken(user.id)));
+  if (stepUp) out.cookies.set(stepUpCookie(issueStepUpToken(user.id)));
   return out;
 }

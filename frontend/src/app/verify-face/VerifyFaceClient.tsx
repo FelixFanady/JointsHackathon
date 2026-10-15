@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Logo from "@/components/Logo";
 
 type Props = {
   name: string;
@@ -124,7 +125,7 @@ export default function VerifyFaceClient({ name, role, mode, broken, lockedMinut
     <div className="vf">
       <div className="vf-card">
         <div className="vf-head">
-          <div className="logo"><span className="msym">shield</span></div>
+          <Logo />
           <div>
             <strong>{mode === "enroll" ? "Daftarkan wajah Anda" : "Verifikasi wajah"}</strong>
             <small>{name} · {role === "admin" ? "Administrator" : "Petugas Support"}</small>

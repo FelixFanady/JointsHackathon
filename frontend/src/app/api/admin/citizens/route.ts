@@ -22,7 +22,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const g = await guard(["admin"]);
+  const g = await guard(["admin"], { stepUp: true });
   if (g.error) return g.error;
   const b = await req.json().catch(() => null);
   const nik = String(b?.nik ?? "").trim();

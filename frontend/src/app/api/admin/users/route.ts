@@ -14,7 +14,7 @@ function tooMany(id: string): boolean {
 }
 
 export async function POST(req: Request) {
-  const g = await guard(["admin"]);
+  const g = await guard(["admin"], { stepUp: true });
   if (g.error) return g.error;
   const me = g.user;
 

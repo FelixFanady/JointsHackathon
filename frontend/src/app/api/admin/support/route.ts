@@ -4,7 +4,7 @@ import { db } from "@/lib/supabase";
 import { saveAreas } from "@/lib/supportArea";
 
 export async function POST(req: Request) {
-  const g = await guard(["admin"]);
+  const g = await guard(["admin"], { stepUp: true });
   if (g.error) return g.error;
 
   const b = await req.json().catch(() => null);

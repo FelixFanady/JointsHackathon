@@ -2,7 +2,7 @@ import { NextResponse, after } from "next/server";
 import { guard } from "@/lib/session";
 import { verifyReports } from "@/lib/ai";
 import { loadAiRunning } from "@/lib/aiRunning";
-import { enqueue, kickQueue, loadQueue } from "@/lib/aiQueue";
+import { enqueue, jobActive, kickQueue, loadQueue } from "@/lib/aiQueue";
 import { reportsInScope } from "@/lib/reportRegion";
 import { scopeFor } from "@/lib/supportArea";
 
@@ -20,7 +20,8 @@ export async function POST(req: Request) {
   const list = ids as string[];
 
   const [running, queue] = await Promise.all([loadAiRunning(), loadQueue()]);
-  if (list.some((id) => running.has(id) || (queue.has(id) && !queue.get(id)!.failed))) {
+  if (list.some((id) => running.has(id) || jobActive(queue.get(id)))) {
+    after(() => kickQueue());
     return NextResponse.json({ error: "AI sedang memeriksa laporan ini. Hasilnya akan muncul otomatis.", running: true }, { status: 409 });
   }
   if (!(await reportsInScope(await scopeFor(g.user), list))) {
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
 
   const res = await verifyReports(list);
   if (res.ok) return NextResponse.json({ verdict: res.value.verdict });
-  if (res.status >= 500 && res.status !== 503) {
+  if (res.status === 429 || (res.status >= 500 && res.status !== 503)) {
     await enqueue(list[0], "verify", list);
     after(() => kickQueue());
     return NextResponse.json({ queued: true, running: true }, { status: 202 });

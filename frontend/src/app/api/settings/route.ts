@@ -10,7 +10,7 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
-  const g = await guard(["admin"]);
+  const g = await guard(["admin"], { stepUp: true });
   if (g.error) return g.error;
 
   const b = await req.json().catch(() => null);
