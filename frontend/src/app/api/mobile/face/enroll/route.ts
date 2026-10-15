@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { bad, rateLimit, requireCitizen } from "@/lib/mobile";
 import { loadProfile, saveProfile } from "@/lib/citizenProfile";
-import { cv, cvUnavailable, issueFaceToken, lockedMinutes, lockedResponse, parseSelfie, reasonMessage, type CvEnroll } from "@/lib/face";
+import { cv, cvUnavailable, lastCvFailure, issueFaceToken, lockedMinutes, lockedResponse, parseSelfie, reasonMessage, type CvEnroll } from "@/lib/face";
 import { logLogin } from "@/lib/loginLog";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   const log = (success: boolean, reason?: string) =>
     logLogin(req, { kind: "citizen", subject: nik, display_name: f.citizen.full_name, method: "face_enroll", success, reason });
   if (!res) {
-    log(false, "cv_unavailable");
+    log(false, lastCvFailure());
     return cvUnavailable();
   }
   if (!res.ok) {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { bad, rateLimit, requireCitizen } from "@/lib/mobile";
 import { loadProfile } from "@/lib/citizenProfile";
 import {
-  MATCH_THRESHOLD, clearFails, confidenceOf, cv, cvUnavailable, issueFaceToken, lockedMinutes, lockedResponse,
+  MATCH_THRESHOLD, clearFails, confidenceOf, cv, cvUnavailable, lastCvFailure, issueFaceToken, lockedMinutes, lockedResponse,
   parseSelfie, reasonMessage, recordFail, type CvCompare,
 } from "@/lib/face";
 import { logLogin } from "@/lib/loginLog";
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
 
   const res = await cv<CvCompare>("/v1/compare", { probe: photo, reference });
   if (!res) {
-    log(false, "cv_unavailable");
+    log(false, lastCvFailure());
     return cvUnavailable();
   }
   if (!res.ok) {

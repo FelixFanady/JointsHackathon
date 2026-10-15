@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/session";
 import { rateLimit } from "@/lib/mobile";
-import { cv, cvUnavailable, lockedMinutes, lockedResponse, parseSelfie, reasonMessage, type CvEnroll } from "@/lib/face";
+import { cv, cvUnavailable, lastCvFailure, lockedMinutes, lockedResponse, parseSelfie, reasonMessage, type CvEnroll } from "@/lib/face";
 import { issueStaffFaceToken, loadStaffFace, needsStaffFace, saveStaffFace, staffFaceCookie, staffLockId } from "@/lib/staffFace";
 import { logLogin } from "@/lib/loginLog";
 
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   const log = (success: boolean, reason?: string) =>
     logLogin(req, { kind: "staff", subject: user.username, display_name: user.full_name, role: user.role, method: "face_enroll", success, reason });
   if (!res) {
-    log(false, "cv_unavailable");
+    log(false, lastCvFailure());
     return cvUnavailable();
   }
   if (!res.ok) {

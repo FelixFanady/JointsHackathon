@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "create-admin": "node scripts/create-admin.mjs",
     "seed-demo": "node scripts/seed-demo.mjs",
+    "seed-dummy": "node scripts/seed-dummy.mjs",
     "encrypt-data": "node scripts/encrypt-settings.mjs"
   },
   "dependencies": {

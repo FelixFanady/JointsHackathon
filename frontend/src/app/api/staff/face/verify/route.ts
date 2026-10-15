@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { guard } from "@/lib/session";
 import { rateLimit } from "@/lib/mobile";
 import {
-  MATCH_THRESHOLD, clearFails, confidenceOf, cv, cvUnavailable, lockedMinutes, lockedResponse, parseSelfie, reasonMessage, recordFail, type CvCompare,
+  MATCH_THRESHOLD, clearFails, confidenceOf, cv, cvUnavailable, lastCvFailure, lockedMinutes, lockedResponse, parseSelfie, reasonMessage, recordFail, type CvCompare,
 } from "@/lib/face";
 import { issueStaffFaceToken, loadStaffFace, needsStaffFace, staffFaceCookie, staffLockId } from "@/lib/staffFace";
 import { logLogin } from "@/lib/loginLog";
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
 
   const res = await cv<CvCompare>("/v1/compare", { probe: photo, reference });
   if (!res) {
-    log(false, "cv_unavailable");
+    log(false, lastCvFailure());
     return cvUnavailable();
   }
   if (!res.ok) {

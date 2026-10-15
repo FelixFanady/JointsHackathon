@@ -509,7 +509,10 @@
           cloudflare_blocked_403: "diblokir Cloudflare (403). Buat WAF Skip rule / matikan Bot Fight Mode.",
           cloudflare_origin_521: "Cloudflare tidak bisa menyambung ke server (521). Cek Caddy & port 80.",
           cloudflare_origin_522: "Server timeout dari Cloudflare (522). Cek firewall VM.",
-          cv_key_mismatch_401: "CV_API_KEY tidak sama dengan di server.",
+          cv_key_mismatch_401: "online, tapi CV_API_KEY di Next.js tidak sama dengan di server CV.",
+          cv_api_key_missing: "online, tapi CV_API_KEY belum di-set di environment Next.js.",
+          encryption_missing_or_invalid: "CV online, tapi DATA_ENCRYPTION_KEY belum di-set / bukan 32 byte.",
+          encryption_mismatch: "CV online, tapi DATA_ENCRYPTION_KEY berbeda dengan kunci yang mengenkripsi data.",
           cv_unreachable: "tidak bisa dihubungi (DNS/jaringan).",
           cv_url_insecure: "CV_SERVICE_URL harus https://.",
         };

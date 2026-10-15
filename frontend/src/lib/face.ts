@@ -84,26 +84,53 @@ export function cvUnavailable(): NextResponse {
   return NextResponse.json(body, { status: 503 });
 }
 
-export type CvHealth = { ok: boolean; host: string; http: number; detail: string; ms: number };
+export type CvKeyState = "ok" | "missing" | "mismatch" | "unknown";
+export type CvHealth = { ok: boolean; host: string; http: number; detail: string; ms: number; key: CvKeyState };
+
+async function probeKey(): Promise<CvKeyState> {
+  const key = process.env.CV_API_KEY;
+  if (!key) return "missing";
+  try {
+    const r = await fetch(`${CV_URL}/v1/enroll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-cv-key": key, "User-Agent": UA },
+      body: "{}",
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (r.status === 401) return "mismatch";
+    return r.status === 422 ? "ok" : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 export async function cvHealth(): Promise<CvHealth> {
   let host = "";
   try {
     host = new URL(CV_URL).host;
   } catch {
-    return { ok: false, host: "", http: 0, detail: "cv_url_invalid", ms: 0 };
+    return { ok: false, host: "", http: 0, detail: "cv_url_invalid", ms: 0, key: "unknown" };
   }
-  if (!cvUrlAllowed()) return { ok: false, host, http: 0, detail: "cv_url_insecure", ms: 0 };
+  if (!cvUrlAllowed()) return { ok: false, host, http: 0, detail: "cv_url_insecure", ms: 0, key: "unknown" };
   const t0 = Date.now();
   try {
     const r = await fetch(`${CV_URL}/health`, { cache: "no-store", headers: { "User-Agent": UA }, signal: AbortSignal.timeout(8_000) });
     const ms = Date.now() - t0;
-    if (!r.ok) return { ok: false, host, http: r.status, detail: describeHttpFailure(r), ms };
+    if (!r.ok) return { ok: false, host, http: r.status, detail: describeHttpFailure(r), ms, key: "unknown" };
     const j = (await r.json().catch(() => null)) as { ok?: unknown } | null;
-    return { ok: j?.ok === true, host, http: r.status, detail: j?.ok === true ? "ok" : "unexpected_body", ms };
+    if (j?.ok !== true) return { ok: false, host, http: r.status, detail: "unexpected_body", ms, key: "unknown" };
+    const key = await probeKey();
+    if (key === "missing") return { ok: false, host, http: r.status, detail: "cv_api_key_missing", ms, key };
+    if (key === "mismatch") return { ok: false, host, http: r.status, detail: "cv_key_mismatch_401", ms, key };
+    return { ok: true, host, http: r.status, detail: "ok", ms, key };
   } catch {
-    return { ok: false, host, http: 0, detail: "cv_unreachable", ms: Date.now() - t0 };
+    return { ok: false, host, http: 0, detail: "cv_unreachable", ms: Date.now() - t0, key: "unknown" };
   }
+}
+
+export function lastCvFailure(): string {
+  return lastCvError || "cv_unavailable";
 }
 
 export function reasonMessage(reason: string): string {
