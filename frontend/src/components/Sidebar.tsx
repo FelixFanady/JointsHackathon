@@ -55,7 +55,27 @@ export default function Sidebar({
   const path = usePendingPath() ?? current;
   const router = useRouter();
   const nav = useNavStart();
+  const [open, setOpen] = useState(false);
   const initials = user.full_name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  useTableLabels();
+
+  useEffect(() => { setOpen(false); }, [current]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const activeLabel = items
+    .flatMap((it) => ("section" in it ? [] : it.children?.length ? it.children : [it]))
+    .filter((it) => (it.href === "/admin" ? path === "/admin" : path === it.href || path.startsWith(it.href + "/")))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.label;
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -64,14 +84,29 @@ export default function Sidebar({
   }
 
   return (
-    <aside className="sidebar">
-      <div className="brand">
-        <div className="logo"><span className="msym">shield</span></div>
-        <div>
-          <strong>SiagaKu</strong>
-          <small>{title}</small>
+    <aside className={`sidebar${open ? " open" : ""}`}>
+      <div className="side-top">
+        <div className="brand">
+          <div className="logo"><span className="msym">shield</span></div>
+          <div>
+            <strong>SiagaKu</strong>
+            <small>{title}</small>
+          </div>
         </div>
+        {activeLabel && <span className="side-current">{activeLabel}</span>}
+        <button
+          type="button"
+          className="side-toggle"
+          aria-label={open ? "Tutup menu" : "Buka menu"}
+          aria-expanded={open}
+          aria-controls="side-body"
+          onClick={() => setOpen((o) => !o)}
+        >
+          <span className="burger" aria-hidden><i /><i /><i /></span>
+        </button>
       </div>
+      <button type="button" className="side-backdrop" aria-hidden tabIndex={-1} onClick={() => setOpen(false)} />
+      <div className="side-body" id="side-body" onClick={(e) => { if ((e.target as HTMLElement).closest("a")) setOpen(false); }}>
       <nav aria-label="Navigasi utama">
         {items.map((it) =>
           "section" in it ? (
@@ -93,6 +128,38 @@ export default function Sidebar({
           <span className="msym sm">logout</span>
         </button>
       </div>
+      </div>
     </aside>
   );
+}
+
+function useTableLabels() {
+  useEffect(() => {
+    let frame = 0;
+    const apply = () => {
+      frame = 0;
+      document.querySelectorAll<HTMLTableElement>("table.table").forEach((t) => {
+        const heads = Array.from(t.querySelectorAll<HTMLTableCellElement>("thead th")).flatMap((th) => {
+          const label = th.getAttribute("aria-label") ? "" : (th.textContent ?? "").trim();
+          return Array.from({ length: th.colSpan || 1 }, () => label);
+        });
+        t.querySelectorAll<HTMLTableRowElement>("tbody tr").forEach((tr) => {
+          let i = 0;
+          for (const td of Array.from(tr.cells)) {
+            const label = td.colSpan > 1 ? "" : heads[i] ?? "";
+            if (td.getAttribute("data-label") !== label) td.setAttribute("data-label", label);
+            i += td.colSpan || 1;
+          }
+        });
+      });
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(apply); };
+    apply();
+    const mo = new MutationObserver(schedule);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      mo.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
 }
