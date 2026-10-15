@@ -13,7 +13,6 @@ type Row = Profile & { areas: string[] };
 
 type Mode = { kind: "add" } | { kind: "password"; p: Row } | { kind: "delete"; p: Row } | { kind: "areas"; p: Row } | null;
 
-/** Province checklist: "ALL" (whole world) or any of the 38 provinces. */
 function AreaPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
   const [q, setQ] = useState("");
   const all = value.includes(ALL_AREAS);

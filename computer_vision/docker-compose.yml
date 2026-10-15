@@ -1,0 +1,39 @@
+services:
+  cv:
+    build: .
+    image: siagaku-cv:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CV_HOST: 0.0.0.0
+      CV_PORT: "8100"
+    expose:
+      - "8100"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 768m
+    cpus: 2
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    depends_on:
+      - cv
+    environment:
+      CV_DOMAIN: ${CV_DOMAIN:?set CV_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

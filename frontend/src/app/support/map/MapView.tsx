@@ -11,13 +11,11 @@ export type MapCluster = {
   count: number;
   critical: boolean;
   confirmed: boolean;
-  /** Category colours of the reports at this point (biggest share first). */
   segments: { color: string; share: number }[];
 };
 
 const INDONESIA: L.LatLngTuple = [-2.5, 118];
 
-/** Marker = colour of its category (a pie when a point mixes categories); size grows with the number of reports. */
 function iconFor(c: MapCluster, threshold: number, selected: boolean) {
   const t = Math.min(1, c.count / Math.max(threshold, 2));
   const size = 26 + Math.round(t * 26);
@@ -49,8 +47,6 @@ export default function MapView({
   selectedAnchor: string | null;
   onSelect: (anchorId: string | null) => void;
   focus?: { lat: number; lng: number; at: number } | null;
-  /** Where to open: the officer's assigned province (or Indonesia). undefined = still loading,
-   *  null = unknown -> fall back to fitting the reports. */
   home?: { lat: number; lng: number; zoom: number } | null;
 }) {
   const el = useRef<HTMLDivElement>(null);
@@ -96,7 +92,6 @@ export default function MapView({
         })
         .addTo(lg);
     }
-    // Only when the officer's area is unknown: frame the reports instead.
     if (home === null && !fitted.current && clusters.length) {
       m.fitBounds(L.latLngBounds(clusters.map((c) => [c.lat, c.lng] as L.LatLngTuple)).pad(0.3), { maxZoom: 15 });
       fitted.current = true;
@@ -104,7 +99,6 @@ export default function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clusters, threshold, selectedAnchor]);
 
-  // Open on the officer's assigned area once it is known (a ?focus= target from a notification wins).
   useEffect(() => {
     const m = map.current;
     if (!m || !home || homed.current) return;
@@ -113,7 +107,6 @@ export default function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [home]);
 
-  // Recenter when a focus target is requested (e.g. "Lihat di peta" / notif).
   useEffect(() => {
     const m = map.current;
     if (!m || !focus) return;

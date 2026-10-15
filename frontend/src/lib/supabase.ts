@@ -10,7 +10,6 @@ function need(name: string): string {
   return v;
 }
 
-/** Service-role client. Server only: bypasses RLS. */
 export function db(): SupabaseClient {
   admin ??= createClient(need("SUPABASE_URL"), need("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -18,7 +17,6 @@ export function db(): SupabaseClient {
   return admin;
 }
 
-/** Anon client, used only to verify passwords at login. */
 export function anonDb(): SupabaseClient {
   anon ??= createClient(need("SUPABASE_URL"), need("SUPABASE_ANON_KEY"), {
     auth: { persistSession: false, autoRefreshToken: false },

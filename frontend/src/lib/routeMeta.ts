@@ -1,5 +1,3 @@
-// Title + skeleton shape per page, shared by each route's loading.tsx and the instant
-// client-side placeholder shown the moment a menu link is clicked (NavPending).
 
 export type SkeletonVariant = "stats" | "reports" | "table" | "form" | "map";
 export type RouteMeta = { eyebrow?: string; title?: string; variant: SkeletonVariant };

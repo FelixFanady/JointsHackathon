@@ -1,8 +1,3 @@
-/**
- * The 38 provinces of Indonesia, used to assign Support officers to areas.
- * "ALL" = the whole world (every report, including ones outside Indonesia or with an unknown area).
- * Client-safe (no server imports).
- */
 
 export const ALL_AREAS = "ALL";
 
@@ -30,13 +25,11 @@ const squash = (s: string) =>
 
 const BY_KEY = new Map<string, Province>(PROVINCES.map((p) => [squash(p), p]));
 
-/** Street-map province name (e.g. "Daerah Khusus Ibukota Jakarta") -> one of the 38, or null (outside Indonesia / unknown). */
 export function normalizeProvince(name: string | null | undefined): Province | null {
   if (!name) return null;
   return BY_KEY.get(squash(name)) ?? null;
 }
 
-/** Display text for an officer's assignment. */
 export function areaLabel(areas: string[]): string {
   if (!areas.length) return "Belum ditugaskan";
   if (areas.includes(ALL_AREAS)) return "Seluruh dunia (ALL)";
@@ -45,10 +38,8 @@ export function areaLabel(areas: string[]): string {
 
 export type MapHome = { lat: number; lng: number; zoom: number; label: string };
 
-/** Whole of Indonesia (for "ALL" and admins). */
 export const INDONESIA_VIEW: MapHome = { lat: -2.5, lng: 118, zoom: 5, label: "Indonesia" };
 
-// Approximate centre + zoom that frames each province on the support map.
 const VIEWS: Record<Province, [number, number, number]> = {
   "Aceh": [4.36, 96.75, 8], "Sumatera Utara": [2.19, 99.38, 7], "Sumatera Barat": [-0.74, 100.4, 8], "Riau": [0.51, 101.81, 8],
   "Kepulauan Riau": [1.9, 105.5, 7], "Jambi": [-1.61, 103.0, 8], "Sumatera Selatan": [-3.32, 104.0, 8],
@@ -64,10 +55,6 @@ const VIEWS: Record<Province, [number, number, number]> = {
   "Papua Tengah": [-3.6, 136.6, 8], "Papua Pegunungan": [-4.1, 139.1, 8], "Papua Selatan": [-7.3, 139.6, 7],
 };
 
-/**
- * Where the support map opens for an officer: one province -> that province; several -> one of them at
- * random; "ALL" (or nothing usable) -> the whole of Indonesia.
- */
 export function homeForAreas(areas: string[], pick: () => number = Math.random): MapHome {
   if (areas.includes(ALL_AREAS)) return INDONESIA_VIEW;
   const own = areas.filter((a): a is Province => a in VIEWS);

@@ -17,9 +17,6 @@ export type SosNotif = {
   lng: number;
 };
 
-// ---- "already alerted" memory, shared by every tab and kept across reloads/page switches ----
-// Each SOS rings + pops a desktop notification exactly ONCE per browser, no matter how often the
-// list re-polls, the page remounts, or several console tabs are open.
 const NOTIFIED_KEY = "siagaku_sos_notified";
 const SEEN_KEY = "siagaku_sos_seen";
 const MAX_REMEMBERED = 400;
@@ -35,10 +32,9 @@ function loadIds(key: string): Set<string> {
 function saveIds(key: string, ids: Set<string>) {
   try {
     localStorage.setItem(key, JSON.stringify([...ids].slice(-MAX_REMEMBERED)));
-  } catch { /* storage full / disabled: in-memory only */ }
+  } catch { }
 }
 
-// ---- alert sound (Web Audio, no file to load) ----
 let audioCtx: AudioContext | null = null;
 function ctx(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -49,17 +45,12 @@ function ctx(): AudioContext | null {
     return null;
   }
 }
-// Browsers only allow sound after the user has interacted with the page once: unlock on the first click/key.
 if (typeof window !== "undefined") {
   const unlock = () => { ctx()?.resume().catch(() => {}); };
   window.addEventListener("pointerdown", unlock, { once: true });
   window.addEventListener("keydown", unlock, { once: true });
 }
 
-/**
- * Emergency chime: two rising "ding-dong-DING" phrases (~1.6 s), a bell-like tone (sine + soft
- * overtone, quick attack, smooth decay). Urgent but not harsh, and clearly different from a UI click.
- */
 function playSosChime() {
   const a = ctx();
   if (!a) return;
@@ -84,19 +75,12 @@ function playSosChime() {
   };
   const t = a.currentTime + 0.02;
   for (const off of [0, 0.82]) {
-    bell(784, t + off, 0.5); // G5
-    bell(988, t + off + 0.16, 0.5); // B5
-    bell(1319, t + off + 0.32, 0.75); // E6
+    bell(784, t + off, 0.5);
+    bell(988, t + off + 0.16, 0.5);
+    bell(1319, t + off + 0.32, 0.75);
   }
 }
 
-/**
- * Emergency notification bell for the support console. When the app fires an
- * SOS it lands in `reports` (kind="sos"); here we surface each recent SOS as a
- * notification enriched with the citizen's area and LAST LOGIN time (from
- * /api/users). New SOS trigger a browser notification (if permitted) + a sound
- * cue, and the bell shows an unread count.
- */
 export default function EmergencyNotifications({
   reports,
   users,
@@ -105,7 +89,6 @@ export default function EmergencyNotifications({
   loaded = true,
 }: {
   reports: Report[];
-  /** False until the first SOS fetch finished (so an empty initial list is not taken as the baseline). */
   loaded?: boolean;
   users: DirectoryUser[];
   windowMinutes: number;
@@ -117,7 +100,6 @@ export default function EmergencyNotifications({
   const firstRun = useRef(true);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // Close the popup on any click/tap outside it, or on Escape.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent | TouchEvent) => {
@@ -140,7 +122,6 @@ export default function EmergencyNotifications({
     return m;
   }, [users]);
 
-  // Recent SOS, newest first, enriched with area + last login.
   const notifs: SosNotif[] = useMemo(() => {
     const windowMs = windowMinutes * 60_000;
     return reports
@@ -168,7 +149,6 @@ export default function EmergencyNotifications({
     if (typeof Notification !== "undefined") setPermission(Notification.permission);
   }, []);
 
-  // Restore read state (badge) from earlier visits / other tabs.
   useEffect(() => {
     setSeen(loadIds(SEEN_KEY));
     const onStorage = (e: StorageEvent) => { if (e.key === SEEN_KEY) setSeen(loadIds(SEEN_KEY)); };
@@ -176,9 +156,6 @@ export default function EmergencyNotifications({
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  // Alert ONCE per SOS. `notified` (localStorage) is separate from `seen` (opened the bell), so a
-  // re-poll or a page switch never re-alerts an SOS that already rang. On the very first load we only
-  // record what is there, so opening the console does not blast every recent SOS.
   useEffect(() => {
     if (!loaded) return;
     const notified = loadIds(NOTIFIED_KEY);
@@ -193,16 +170,16 @@ export default function EmergencyNotifications({
     const fresh = notifs.filter((n) => !notified.has(n.id));
     if (fresh.length === 0) return;
     fresh.forEach((n) => notified.add(n.id));
-    saveIds(NOTIFIED_KEY, notified); // claim first, so another open tab does not ring for the same SOS
+    saveIds(NOTIFIED_KEY, notified);
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
       fresh.slice(0, 3).forEach((n) => {
         new Notification("🚨 SOS Darurat", {
           body: `${n.name} • ${n.category}\nDaerah: ${n.area ?? "tidak diketahui"}\nLogin terakhir: ${n.last_login ? timeAgo(n.last_login) : "belum pernah"}`,
-          tag: n.id, // the browser also collapses repeats of the same SOS
+          tag: n.id,
         });
       });
     }
-    try { playSosChime(); } catch { /* audio optional */ }
+    try { playSosChime(); } catch { }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notifs, loaded]);
 

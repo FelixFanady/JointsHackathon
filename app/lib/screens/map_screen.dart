@@ -14,7 +14,7 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver, AutoRefresh {
   final controller = MapController();
-  bool sosMode = true; // Peringatan Darurat vs Laporan Warga
+  bool sosMode = true;
   Place? me;
   List<NearbyItem> items = [];
   bool loading = true;
@@ -26,8 +26,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver, Auto
     _load();
   }
 
-  // Silent refresh (every 20 s while this tab is visible, and right after a new SOS/report):
-  // keeps the map where the user moved it and shows no spinner.
   @override
   Future<void> autoRefresh() async {
     final p = await recentPlace();

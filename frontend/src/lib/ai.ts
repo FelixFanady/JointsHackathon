@@ -3,11 +3,6 @@ import { db } from "./supabase";
 import { clearAiRunning, markAiRunning } from "./aiRunning";
 import type { AiVerdict } from "./types";
 
-/**
- * Shared AI + external-context helpers (OpenRouter free models, BMKG, Google News).
- * Used by the officer's "AI Insight" button (/api/ai-insight) and by the automatic
- * triage that runs when a new report arrives (lib/autoTriage.ts).
- */
 
 export const VERIFY_SYSTEM = `Kamu adalah asisten verifikasi laporan darurat untuk pusat operasi di Indonesia.
 Tugas: menilai apakah sekumpulan laporan warga tentang SATU kejadian tampak VALID (kredibel) atau tidak.
@@ -31,7 +26,6 @@ export function parseVerdict(text: string): AiVerdict | null {
   };
 }
 
-/** First {...} block of a model answer as an object, or null. */
 export function parseJsonObject(text: string): Record<string, unknown> | null {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -44,13 +38,9 @@ export function parseJsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
-// Preferred free models, FASTEST-FIRST. The live catalog filter (liveFreeModels)
-// drops any that are currently dead, and the race picks whichever of the top
-// wave answers first — so putting the small/fast models up top makes the common
-// case sub-second instead of waiting on a 500B reasoning model (~8s).
 const DEFAULT_FREE_MODELS = [
-  "nvidia/nemotron-3.5-lightning:free", // ~0.3s, valid JSON — fastest observed
-  "liquid/lfm-2.5-2.6b:free", // ~0.4s, valid JSON
+  "nvidia/nemotron-3.5-lightning:free",
+  "liquid/lfm-2.5-2.6b:free",
   "google/gemma-4-26b-a4b-it:free",
   "google/gemma-4-31b-it:free",
   "apodex/apodex-1.1-mini:free",
@@ -59,17 +49,16 @@ const DEFAULT_FREE_MODELS = [
   "meta-llama/llama-3.3-70b-instruct:free",
   "openai/gpt-oss-120b:free",
   "nvidia/nemotron-3-super-120b-a12b:free",
-  "nvidia/nemotron-3-ultra-550b-a55b:free", // large/slow — last resort
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
 ];
 
 const isFree = (m: string) => m.endsWith(":free") || m === "openrouter/free";
-const MAX_ATTEMPTS = 9; // size of the candidate pool
-const RACE_SIZE = 3; // models queried concurrently per wave — first valid answer wins
-const PER_MODEL_TIMEOUT_MS = 9_000; // a free model slower than this is almost always congested; move on fast
+const MAX_ATTEMPTS = 9;
+const RACE_SIZE = 3;
+const PER_MODEL_TIMEOUT_MS = 9_000;
 
 let catalogCache: { at: number; ids: string[] } | null = null;
 
-// Live list of models that are actually free right now (pricing 0), cached 10 min.
 async function liveFreeModels(key: string): Promise<string[]> {
   if (catalogCache && Date.now() - catalogCache.at < 600_000) return catalogCache.ids;
   try {
@@ -90,7 +79,6 @@ async function liveFreeModels(key: string): Promise<string[]> {
   }
 }
 
-// Order: env list -> built-in list (only if still in live catalog, when known) -> other live free models -> openrouter/free last.
 async function freeModels(key: string): Promise<string[]> {
   const raw = process.env.OPENROUTER_MODELS || process.env.OPENROUTER_MODEL || "";
   const env = raw.split(",").map((s) => s.trim()).filter(isFree);
@@ -110,10 +98,6 @@ function cleanText(msg: { content?: unknown; reasoning?: unknown } | undefined):
 
 export type AiResult<T> = { ok: true; value: T } | { ok: false; error: string; status: number };
 
-/**
- * Ask the free-model chain for one JSON answer. Models are tried in concurrent WAVES
- * (RACE_SIZE at once); the first answer that `accept` can parse wins.
- */
 export async function askAiJson<T>(system: string, user: string, accept: (text: string) => T | null): Promise<AiResult<T>> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) return { ok: false, error: "OPENROUTER_API_KEY belum diisi di .env.local.", status: 503 };
@@ -130,7 +114,7 @@ export async function askAiJson<T>(system: string, user: string, accept: (text: 
       body: JSON.stringify({
         model,
         temperature: 0.2,
-        max_tokens: 1500, // reasoning models spend tokens thinking; 500 truncated the JSON (HTTP 200 but unparseable)
+        max_tokens: 1500,
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
@@ -154,7 +138,6 @@ export async function askAiJson<T>(system: string, user: string, accept: (text: 
     const controllers = wave.map(() => new AbortController());
     const timers = controllers.map((c) => setTimeout(() => c.abort(), PER_MODEL_TIMEOUT_MS));
     try {
-      // Resolve as soon as ONE model returns a valid answer; losers get aborted.
       value = await new Promise<T>((resolve, reject) => {
         let pending = wave.length;
         wave.forEach((model, k) => {
@@ -173,7 +156,6 @@ export async function askAiJson<T>(system: string, user: string, accept: (text: 
         });
       });
     } catch {
-      /* whole wave failed -> next wave */
     } finally {
       timers.forEach(clearTimeout);
     }
@@ -201,10 +183,9 @@ export type Quake = {
   wilayah: string;
   jarak_km: number;
   dirasakan?: string;
-  potensi?: string; // tsunami potential text (only in the M5+ list)
+  potensi?: string;
 };
 
-// Latest BMKG quakes (M5+ list + felt list), annotated with distance to (lat,lng). Best-effort.
 export async function fetchBmkg(lat: number, lng: number, limit = 5): Promise<Quake[]> {
   const files = ["gempaterkini.json", "gempadirasakan.json"];
   const out: Quake[] = [];
@@ -228,11 +209,9 @@ export async function fetchBmkg(lat: number, lng: number, limit = 5): Promise<Qu
           });
         }
       } catch {
-        /* BMKG unavailable -> continue without it */
       }
     }),
   );
-  // Same quake can be in both lists: merge, keeping the tsunami-potential text if either has it.
   const merged = new Map<string, Quake>();
   for (const q of out) {
     const k = q.waktu + q.wilayah;
@@ -249,7 +228,6 @@ const CATEGORY_QUERY: Record<string, string> = {
   banjir: "banjir", gempa: "gempa", kebakaran: "kebakaran", longsor: "longsor", kecelakaan: "kecelakaan",
 };
 
-// Latest news headlines for the incident (Google News RSS, no key). Best-effort.
 export async function fetchNews(categories: string[], places: string[]): Promise<{ judul: string; sumber: string; waktu: string }[]> {
   const cat = categories.map((c) => CATEGORY_QUERY[c.toLowerCase()] ?? c).find(Boolean) ?? "darurat";
   const place = (places[0] ?? "").split(",").slice(-3, -1).join(" ").trim() || (places[0] ?? "").split(",")[0]?.trim() || "";
@@ -270,12 +248,6 @@ export async function fetchNews(categories: string[], places: string[]): Promise
   }
 }
 
-/**
- * AI verdict for a set of reports about one incident (BMKG + news as reference). Saves the verdict
- * on every report. Returns the BMKG quakes it looked at so callers can apply their own BMKG rule.
- * `track` (default true) shows "AI sedang memeriksa" on these reports while it runs; a caller that
- * tracks a longer job itself (auto triage) passes false.
- */
 export async function verifyReports(ids: string[], { track = true }: { track?: boolean } = {}): Promise<AiResult<{ verdict: AiVerdict; quakes: Quake[] }>> {
   if (!process.env.OPENROUTER_API_KEY) return { ok: false, error: "OPENROUTER_API_KEY belum diisi di .env.local.", status: 503 };
   if (track) await markAiRunning(ids);

@@ -8,28 +8,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 
-/// Pulls the notifications Support sends from the web console and shows them as
-/// system notifications that sound + vibrate like an alarm.
-///
-/// Two delivery paths, deduplicated by notice id:
-///  * push (FCM, see push.dart): wakes the app even when it is closed -> [showFromPush];
-///  * polling: /api/mobile/notices every [_every] while the app process is alive. This is the
-///    fallback when Firebase is not configured or the phone has no Google services.
-/// Every failure is swallowed: a notification problem must never break reporting or SOS.
 class Notifier {
   Notifier._();
 
   static final _plugin = FlutterLocalNotificationsPlugin();
   static const _every = Duration(seconds: 15);
-  // Android channels are immutable once created: sound/vibration changes need a new id.
   static const _oldChannels = ['siaga_alarm_v1', 'siaga_kriminal_v2'];
   static const _disaster =
       _Kind('siaga_bencana_v2', 'Peringatan Bencana Alam', 'Sirene bencana selama 30 detik, satu kali per peringatan', 'siren_disaster');
   static const _crime = _Kind('siaga_kriminal_v3', 'Peringatan Kriminalitas', 'Sirene polisi satu kali per peringatan', 'siren_police');
   static const _general = _Kind('siaga_umum_v2', 'Info SiagaKu', 'Pemberitahuan umum dari petugas', null);
-  // Vibration plays once (never repeats): disaster = alarm rhythm, crime = a single buzz.
   static final _vibDisaster = Int64List.fromList([0, 900, 350, 900, 350, 1500]);
-  static final _vibCrime = Int64List.fromList([0, 700]); // one buzz
+  static final _vibCrime = Int64List.fromList([0, 700]);
   static const _maxRemembered = 200;
 
   static Timer? _timer;
@@ -51,7 +41,6 @@ class Notifier {
         await android?.deleteNotificationChannel(id);
       }
       for (final k in [_disaster, _crime, _general]) {
-        // One failing channel (e.g. siren file missing) must not stop the others.
         try {
           await android?.createNotificationChannel(AndroidNotificationChannel(
             k.channel,
@@ -77,8 +66,6 @@ class Notifier {
           ? _vibCrime
           : null;
 
-  // Words that decide the siren. Checked on title + message, crime first
-  // ("kebakaran akibat penjarahan" is still a crime alert).
   static const _crimeWords = [
     'kriminal',
     'curi(?!ga)',
@@ -130,7 +117,6 @@ class Notifier {
   ];
 
   static _Kind _kindOf(AppNotice n) {
-    // Support picks the kind on the web; trust it when present.
     switch (n.kind) {
       case 'bencana':
         return _disaster;
@@ -139,9 +125,7 @@ class Notifier {
       case 'umum':
         return _general;
     }
-    // Older notices without a kind: guess from the words.
     final text = '${n.title} ${n.message}'.toLowerCase();
-    // Word start, allowing Indonesian prefixes ("dicuri", "dibegal", "terbakar" style forms).
     bool has(List<String> words) => words.any((w) => RegExp('(^|[^a-z])(di|ke|ter|pen|pem|pe)?$w').hasMatch(text));
     if (has(_crimeWords)) return _crime;
     if (has(_disasterWords)) return _disaster;
@@ -157,7 +141,6 @@ class Notifier {
     } catch (_) {}
   }
 
-  /// Start/stop polling to follow the signed-in state. Call from the session listener.
   static void sync() {
     if (!_supported) return;
     if (session.signedIn) {
@@ -186,7 +169,7 @@ class Notifier {
     _busy = true;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.reload(); // a push handled in the background isolate may have updated the shown list
+      await prefs.reload();
       final key = 'notice_since_$nik';
       final shownKey = 'notice_shown_$nik';
       final since = prefs.getString(key);
@@ -196,16 +179,12 @@ class Notifier {
       items.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
       if (since == null || !prefs.containsKey(shownKey)) {
-        // First poll after login: baseline only, never replay old notices.
         shown.addAll(items.map((n) => n.id).where((id) => !shown.contains(id)));
         await _save(
             prefs, key, shownKey, shown, items.isEmpty ? (since ?? '1970-01-01T00:00:00.000Z') : _later(since, items.last.createdAt));
         return;
       }
 
-      // Each notice alerts exactly once (remembered by id), even if the server returns it again
-      // or the user already opened / swiped it away. The cursor only moves FORWARD and only past
-      // notices that were actually shown, so a failed show is retried on the next tick instead of lost.
       var cursor = since;
       for (final n in items) {
         if (!shown.contains(n.id)) {
@@ -216,7 +195,6 @@ class Notifier {
       }
       await _save(prefs, key, shownKey, shown, cursor);
     } catch (_) {
-      // offline / server down: try again on the next tick
     } finally {
       _busy = false;
     }
@@ -224,21 +202,17 @@ class Notifier {
 
   static String _later(String? a, String b) => a == null || _after(b, a) ? b : a;
 
-  /// A notice that arrived by push (FCM), possibly while the app was closed: this runs in a
-  /// background isolate then, where [session] is NOT loaded, so the signed-in NIK comes from
-  /// SharedPreferences. Shares the "already shown" list with [poll], so a notice that arrives by
-  /// both push and polling alerts once.
   static Future<void> showFromPush(Map<String, dynamic> d) async {
     try {
       if (!_supported) return;
       final id = d['id'] as String?, title = d['title'] as String?, message = d['message'] as String?;
       if (id == null || title == null || message == null) return;
       final prefs = await SharedPreferences.getInstance();
-      await prefs.reload(); // another isolate (the app itself) may have written since this one cached
+      await prefs.reload();
       final nik = prefs.getString('nik');
-      if (nik == null) return; // signed out: broadcasts must not alert a phone nobody is signed in on
+      if (nik == null) return;
       final to = d['to'] as String?;
-      if (to != null && to != 'all' && to != nik) return; // meant for someone who used this phone before
+      if (to != null && to != 'all' && to != nik) return;
       await init();
       if (!_ready) return;
       final shownKey = 'notice_shown_$nik';
@@ -266,8 +240,6 @@ class Notifier {
     await prefs.setString(key, cursor);
   }
 
-  /// Show with its siren; if that fails (e.g. a build without the siren file), still show it
-  /// with the normal sound rather than dropping a safety alert.
   static Future<bool> _showSafe(AppNotice n) async {
     try {
       await _show(n, _kindOf(n));
@@ -289,8 +261,6 @@ class Notifier {
   static DateTime? _locSentAt;
   static const _locEvery = Duration(minutes: 5);
 
-  /// Position to share with the server at most every 5 minutes. Never prompts: only when the
-  /// citizen already allowed location (the SOS/report screens ask for it).
   static Future<(double, double)?> _locationForServer() async {
     final now = DateTime.now();
     if (_locSentAt != null && now.difference(_locSentAt!) < _locEvery) return null;
@@ -307,7 +277,6 @@ class Notifier {
     }
   }
 
-  /// Stable across app restarts (String.hashCode is not guaranteed to be).
   static int _idFor(String s) {
     var h = 0x811c9dc5;
     for (final c in s.codeUnits) {
@@ -322,8 +291,6 @@ class Notifier {
         : n.level == 'warning'
             ? '⚠️ ${n.title}'
             : n.title;
-    // A photo (instant crime alert) is shown big when the notification is expanded; the text stays
-    // readable underneath. No photo, or it cannot be downloaded quickly -> the normal text style.
     final photo = await _photoBytes(n.photoUrl);
     final StyleInformation style = photo != null
         ? BigPictureStyleInformation(
@@ -353,8 +320,6 @@ class Notifier {
           audioAttributesUsage: k.sound == null ? AudioAttributesUsage.notification : AudioAttributesUsage.alarm,
           enableVibration: true,
           vibrationPattern: _vibration(k),
-          // Sound plays ONCE (no FLAG_INSISTENT): the disaster siren file itself is 30 s,
-          // the police siren ~3.6 s. Opening or swiping the notification stops it.
           onlyAlertOnce: true,
           autoCancel: true,
           styleInformation: style,
@@ -364,7 +329,6 @@ class Notifier {
     );
   }
 
-  /// Download a notification photo: https/http only, at most 2.5 MB, 6 s. Any problem -> null (text only).
   static Future<Uint8List?> _photoBytes(String? url) async {
     if (url == null || url.isEmpty) return null;
     final u = Uri.tryParse(url);
@@ -379,7 +343,6 @@ class Notifier {
   }
 }
 
-/// Which alert a notice gets: its Android channel and siren (res/raw name, null = default sound).
 class _Kind {
   const _Kind(this.channel, this.name, this.description, this.sound);
   final String channel, name, description;

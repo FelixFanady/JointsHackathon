@@ -3,40 +3,39 @@ import { createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { db } from "./supabase";
 
-/**
- * Face login for the mobile app.
- *
- * The phone sends ONE live selfie. The backend loads the citizen's reference photo
- * (encrypted profile, never sent to the phone), asks the internal computer-vision
- * service (computer_vision/face_service.py, 127.0.0.1 only) for a similarity score, and
- * answers with { match, confidence } -- never a photo, never the raw embedding.
- *
- * A successful match returns a short signed "face session" token. Endpoints that expose
- * personal data can require it (see requireFaceSession). Emergency endpoints (SOS, report)
- * must NEVER require it: a failed face check must not stop someone from calling for help.
- */
 
 const CV_URL = (process.env.CV_SERVICE_URL ?? "http://127.0.0.1:8100").replace(/\/$/, "");
 
-/** SFace cosine. OpenCV's equal-error cut-off is 0.363; 0.42 trades a few false rejects for fewer false accepts. */
+function cvUrlAllowed(): boolean {
+  try {
+    const u = new URL(CV_URL);
+    if (u.protocol === "https:") return true;
+    if (u.protocol !== "http:") return false;
+    return ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname) || process.env.CV_ALLOW_INSECURE_HTTP === "1";
+  } catch {
+    return false;
+  }
+}
+
 export const MATCH_THRESHOLD = Math.min(0.7, Math.max(0.363, Number(process.env.FACE_MATCH_THRESHOLD) || 0.42));
 
-/** Similarity -> 0..1 score for the UI. 0.5 at OpenCV's cut-off; ~0.7 at our default threshold; ~0.96 at 0.6. */
 export function confidenceOf(similarity: number): number {
   const c = 1 / (1 + Math.exp(-14 * (similarity - 0.363)));
   return Math.round(c * 100) / 100;
 }
 
-// ---------------------------------------------------------------- CV service
 
 export type CvEnroll = { ok: true; photo_jpeg_b64: string } | { ok: false; reason: string };
 export type CvCompare = { ok: true; similarity: number } | { ok: false; reason: string };
 
-/** null = service unreachable / misconfigured (caller answers 503). */
 export async function cv<T>(path: "/v1/enroll" | "/v1/compare", body: Record<string, string>): Promise<T | null> {
   const key = process.env.CV_API_KEY;
   if (!key) {
     console.error("[face] CV_API_KEY is not set");
+    return null;
+  }
+  if (!cvUrlAllowed()) {
+    console.error("[face] CV_SERVICE_URL must be https:// (or http on localhost). Refusing to send faces over plain HTTP.");
     return null;
   }
   try {
@@ -58,7 +57,6 @@ export async function cv<T>(path: "/v1/enroll" | "/v1/compare", body: Record<str
   }
 }
 
-/** Human message for a CV reason code (shown in the app; contains no data about anyone). */
 export function reasonMessage(reason: string): string {
   switch (reason) {
     case "no_face": return "Wajah tidak terdeteksi. Hadapkan wajah ke kamera.";
@@ -76,7 +74,6 @@ export function reasonMessage(reason: string): string {
   }
 }
 
-/** Accepts raw base64 or a data: URI of a JPEG (what the camera produces). Returns bare base64 or null. */
 export function parseSelfie(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const b64 = v.startsWith("data:image/jpeg;base64,") ? v.slice(23) : v;
@@ -85,28 +82,45 @@ export function parseSelfie(v: unknown): string | null {
   return head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff ? b64 : null;
 }
 
-// ---------------------------------------------------------------- brute-force guard (durable)
 
-/**
- * Failed matches per NIK, stored in `settings` so the limit holds across serverless
- * instances and restarts (the IP limiter in lib/mobile.ts does not). Only timestamps.
- */
 const GUARD_PREFIX = "face_guard:";
 const MAX_FAILS = 5;
 const FAIL_WINDOW_MS = 15 * 60_000;
 
-async function failsOf(nik: string): Promise<number[]> {
-  const { data } = await db().from("settings").select("value").eq("key", GUARD_PREFIX + nik).maybeSingle();
-  const arr = (data?.value as { fails?: unknown } | null)?.fails;
+function recentFails(value: unknown): number[] {
+  const arr = (value as { fails?: unknown } | null)?.fails;
   const now = Date.now();
   return Array.isArray(arr) ? arr.filter((t): t is number => typeof t === "number" && now - t < FAIL_WINDOW_MS) : [];
 }
 
-/** Minutes until the NIK may try again, or 0 when not locked. */
-export async function lockedMinutes(nik: string): Promise<number> {
-  const fails = await failsOf(nik);
+function minutesLeft(fails: number[]): number {
   if (fails.length < MAX_FAILS) return 0;
   return Math.max(1, Math.ceil((Math.min(...fails) + FAIL_WINDOW_MS - Date.now()) / 60_000));
+}
+
+async function failsOf(nik: string): Promise<number[]> {
+  const { data } = await db().from("settings").select("value").eq("key", GUARD_PREFIX + nik).maybeSingle();
+  return recentFails(data?.value);
+}
+
+export async function lockedMinutes(nik: string): Promise<number> {
+  return minutesLeft(await failsOf(nik));
+}
+
+export async function lockedNiks(): Promise<Record<string, number>> {
+  const { data } = await db().from("settings").select("key,value").like("key", `${GUARD_PREFIX}%`).limit(5000);
+  const out: Record<string, number> = {};
+  for (const row of data ?? []) {
+    const nik = String(row.key).slice(GUARD_PREFIX.length);
+    const m = minutesLeft(recentFails(row.value));
+    if (m) out[nik] = m;
+  }
+  return out;
+}
+
+export async function unlockFace(nik: string): Promise<boolean> {
+  const { error } = await db().from("settings").delete().eq("key", GUARD_PREFIX + nik);
+  return !error;
 }
 
 export async function recordFail(nik: string): Promise<void> {
@@ -127,12 +141,10 @@ export const lockedResponse = (minutes: number) =>
     { status: 429 },
   );
 
-// ---------------------------------------------------------------- face session token
 
 const TOKEN_TTL_S = 30 * 24 * 3600;
 
 let tokenKeyCache: Buffer | null = null;
-/** Separate key derived from DATA_ENCRYPTION_KEY (HKDF), so no new secret has to be configured. */
 function tokenKey(): Buffer {
   if (tokenKeyCache) return tokenKeyCache;
   const raw = process.env.DATA_ENCRYPTION_KEY;
@@ -143,7 +155,6 @@ function tokenKey(): Buffer {
 
 const sign = (nik: string, exp: number) => createHmac("sha256", tokenKey()).update(`fv1.${nik}.${exp}`).digest("base64url");
 
-/** Token = "fv1.<exp>.<sig>"; the NIK is bound in the signature, not carried in the token. */
 export function issueFaceToken(nik: string): { token: string; expires_at: string } {
   const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_S;
   return { token: `fv1.${exp}.${sign(nik, exp)}`, expires_at: new Date(exp * 1000).toISOString() };
@@ -160,11 +171,6 @@ export function checkFaceToken(nik: string, token: unknown): boolean {
   return want.length === got.length && timingSafeEqual(want, got);
 }
 
-/**
- * For endpoints that return a citizen's personal data. Enforced only when
- * FACE_AUTH_ENFORCE=1, so older app builds keep working until the new one is rolled out.
- * Never call this from SOS/report.
- */
 export function requireFaceSession(req: Request, nik: string): NextResponse | null {
   if (process.env.FACE_AUTH_ENFORCE !== "1") return null;
   if (checkFaceToken(nik, req.headers.get("x-face-token"))) return null;

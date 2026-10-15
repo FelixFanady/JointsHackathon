@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Tes Verifikasi Wajah - SiagaKu</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f7f9;
+        --card: #fff;
+        --fg: #14181f;
+        --muted: #5b6472;
+        --line: #d9dde3;
+        --pri: #1f6feb;
+        --ok: #1a7f37;
+        --err: #cf222e;
+        --warn: #9a6700;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --card: #161b22;
+          --fg: #e6edf3;
+          --muted: #8b949e;
+          --line: #30363d;
+          --pri: #4493f8;
+          --ok: #3fb950;
+          --err: #f85149;
+          --warn: #d29922;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          15px/1.5 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      main {
+        max-width: 560px;
+        margin: 32px auto;
+        padding: 0 16px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 20px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+      }
+      p.sub {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+      input {
+        flex: 1;
+        padding: 10px 12px;
+        font-size: 16px;
+        letter-spacing: 1px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      input:focus-visible,
+      button:focus-visible {
+        outline: 2px solid var(--pri);
+        outline-offset: 2px;
+      }
+      button {
+        padding: 10px 16px;
+        font-size: 15px;
+        font-weight: 600;
+        border: 0;
+        border-radius: 8px;
+        background: var(--pri);
+        color: #fff;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: transparent;
+        color: var(--fg);
+        border: 1px solid var(--line);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .stage {
+        position: relative;
+        margin-top: 16px;
+        aspect-ratio: 4/3;
+        background: #000;
+        border-radius: 10px;
+        overflow: hidden;
+        display: none;
+      }
+      .stage.on {
+        display: block;
+      }
+      video,
+      .stage img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1);
+      }
+      .stage img {
+        position: absolute;
+        inset: 0;
+        display: none;
+      }
+      .oval {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 52%;
+        height: 78%;
+        transform: translate(-50%, -50%);
+        border: 3px dashed rgba(255, 255, 255, 0.75);
+        border-radius: 50%;
+        pointer-events: none;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+      }
+      .status {
+        margin-top: 16px;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        color: var(--fg);
+        display: none;
+      }
+      .status.on {
+        display: block;
+      }
+      .status.ok {
+        border-color: var(--ok);
+      }
+      .status.err {
+        border-color: var(--err);
+      }
+      .status.warn {
+        border-color: var(--warn);
+      }
+      .big {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .ok .big {
+        color: var(--ok);
+      }
+      .err .big {
+        color: var(--err);
+      }
+      .warn .big {
+        color: var(--warn);
+      }
+      .bar {
+        height: 10px;
+        border-radius: 5px;
+        background: var(--line);
+        overflow: hidden;
+        margin: 8px 0;
+      }
+      .bar > i {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: var(--pri);
+        transition: width 0.3s;
+      }
+      pre {
+        margin: 8px 0 0;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-all;
+        color: var(--muted);
+      }
+      .note {
+        margin-top: 16px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <h1>Tes Verifikasi Wajah</h1>
+        <p class="sub">
+          Cocokkan wajah dari webcam dengan foto profil warga di admin. Server
+          hanya mengembalikan <b>match</b> dan <b>confidence</b>.
+        </p>
+
+        <form id="nikForm" novalidate>
+          <label for="nik">NIK (16 digit)</label>
+          <div class="row">
+            <input
+              id="nik"
+              inputmode="numeric"
+              autocomplete="off"
+              maxlength="16"
+              placeholder="3273xxxxxxxxxxxx"
+              aria-describedby="nikHint"
+            />
+            <button id="startBtn" type="submit">Mulai</button>
+          </div>
+          <div id="nikHint" class="hint">0/16 digit</div>
+        </form>
+
+        <div id="stage" class="stage" aria-label="Pratinjau kamera">
+          <video id="video" autoplay playsinline muted></video>
+          <img id="shot" alt="Foto yang dikirim" />
+          <div class="oval" aria-hidden="true"></div>
+        </div>
+
+        <div class="actions" id="camActions" hidden>
+          <button id="snapBtn" type="button">Ambil &amp; Verifikasi</button>
+          <button id="retryBtn" type="button" class="secondary" hidden>
+            Coba lagi
+          </button>
+          <button id="stopBtn" type="button" class="secondary">
+            Matikan kamera
+          </button>
+        </div>
+
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+
+        <p class="note">
+          Catatan: setiap hasil <i>tidak cocok</i> dihitung sebagai percobaan
+          gagal (5x dalam 15 menit = NIK terkunci). Foto yang kurang jelas
+          (gelap, buram, tidak ada wajah) tidak dihitung. Selfie tidak disimpan.
+        </p>
+      </div>
+    </main>
+
+    <canvas id="canvas" class="sr" aria-hidden="true"></canvas>
+
+    <script>
+      (() => {
+        const $ = (id) => document.getElementById(id);
+        const nikEl = $("nik"),
+          hint = $("nikHint"),
+          startBtn = $("startBtn");
+        const stage = $("stage"),
+          video = $("video"),
+          shot = $("shot"),
+          canvas = $("canvas");
+        const camActions = $("camActions"),
+          snapBtn = $("snapBtn"),
+          retryBtn = $("retryBtn"),
+          stopBtn = $("stopBtn");
+        const statusEl = $("status");
+        let stream = null,
+          currentNik = null;
+
+        const esc = (s) =>
+          String(s).replace(
+            /[&<>"']/g,
+            (c) =>
+              ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+              })[c],
+          );
+
+        function show(kind, title, detail, raw) {
+          statusEl.className = "status on " + kind;
+          statusEl.innerHTML = `<div class="big">${esc(title)}</div>${detail || ""}${raw ? `<pre>${esc(raw)}</pre>` : ""}`;
+        }
+
+        nikEl.addEventListener("input", () => {
+          nikEl.value = nikEl.value.replace(/\D/g, "").slice(0, 16);
+          hint.textContent = `${nikEl.value.length}/16 digit`;
+        });
+
+        async function post(path, body) {
+          const r = await fetch(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          let data = null;
+          try {
+            data = await r.json();
+          } catch {
+          }
+          return { status: r.status, data };
+        }
+
+        $("nikForm").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const nik = nikEl.value;
+          if (!/^\d{16}$/.test(nik)) {
+            show("err", "NIK harus 16 digit", "");
+            nikEl.focus();
+            return;
+          }
+          startBtn.disabled = true;
+          show("", "Memeriksa NIK...", "");
+          try {
+            const { status, data } = await post("/api/mobile/identify", {
+              nik,
+            });
+            if (status !== 200) {
+              show(
+                "err",
+                data?.error || `Gagal (HTTP ${status})`,
+                "",
+                JSON.stringify(data),
+              );
+              return;
+            }
+            if (!data.face_registered) {
+              show(
+                "warn",
+                "Wajah belum terdaftar",
+                `<p>${esc(data.name)} belum punya foto profil di admin. Upload foto dulu di halaman admin, lalu tes lagi.</p>`,
+              );
+              stopCam();
+              return;
+            }
+            currentNik = nik;
+            await openCam();
+            show(
+              "",
+              `NIK ditemukan: ${data.name}`,
+              "<p>Posisikan wajah di dalam oval, lalu klik <b>Ambil &amp; Verifikasi</b>.</p>",
+            );
+          } catch (err) {
+            show("err", "Tidak bisa menghubungi server", "", String(err));
+          } finally {
+            startBtn.disabled = false;
+          }
+        });
+
+        async function openCam() {
+          if (!navigator.mediaDevices?.getUserMedia)
+            throw new Error(
+              "Browser tidak mendukung webcam (buka lewat http://localhost atau https).",
+            );
+          if (!stream) {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: "user",
+                width: { ideal: 1280 },
+                height: { ideal: 960 },
+              },
+              audio: false,
+            });
+            video.srcObject = stream;
+          }
+          stage.classList.add("on");
+          camActions.hidden = false;
+          resetShot();
+        }
+
+        function stopCam() {
+          if (stream) stream.getTracks().forEach((t) => t.stop());
+          stream = null;
+          video.srcObject = null;
+          stage.classList.remove("on");
+          camActions.hidden = true;
+        }
+
+        function resetShot() {
+          shot.style.display = "none";
+          shot.removeAttribute("src");
+          video.style.visibility = "visible";
+          snapBtn.hidden = false;
+          retryBtn.hidden = true;
+        }
+
+        function capture() {
+          const w = video.videoWidth,
+            h = video.videoHeight;
+          const scale = Math.min(1, 960 / w);
+          canvas.width = Math.round(w * scale);
+          canvas.height = Math.round(h * scale);
+          canvas
+            .getContext("2d")
+            .drawImage(video, 0, 0, canvas.width, canvas.height);
+          return canvas.toDataURL("image/jpeg", 0.9);
+        }
+
+        snapBtn.addEventListener("click", async () => {
+          if (!currentNik || !video.videoWidth) return;
+          snapBtn.disabled = true;
+          const dataUrl = capture();
+          shot.src = dataUrl;
+          shot.style.display = "block";
+          video.style.visibility = "hidden";
+          show("", "Mencocokkan wajah...", "");
+          const t0 = performance.now();
+          try {
+            const { status, data } = await post("/api/mobile/face/verify", {
+              nik: currentNik,
+              photo: dataUrl,
+            });
+            const ms = Math.round(performance.now() - t0);
+            const raw = JSON.stringify({
+              http: status,
+              ...data,
+              token: data?.token ? "(disembunyikan)" : undefined,
+              ms,
+            });
+            if (status === 200) {
+              const pct = Math.round((data.confidence ?? 0) * 100);
+              const detail = `<div class="bar" role="img" aria-label="Confidence ${pct}%"><i style="width:${pct}%"></i></div><p>Confidence: <b>${pct}%</b></p>`;
+              show(
+                data.match ? "ok" : "err",
+                data.match ? "COCOK ✔" : "TIDAK COCOK ✘",
+                detail,
+                raw,
+              );
+            } else if (status === 422) {
+              show(
+                "warn",
+                "Foto kurang bagus",
+                `<p>${esc(data?.error || "")}</p>`,
+                raw,
+              );
+            } else {
+              show("err", data?.error || `Gagal (HTTP ${status})`, "", raw);
+            }
+          } catch (err) {
+            show("err", "Tidak bisa menghubungi server", "", String(err));
+          } finally {
+            snapBtn.disabled = false;
+            snapBtn.hidden = true;
+            retryBtn.hidden = false;
+            retryBtn.focus();
+          }
+        });
+
+        retryBtn.addEventListener("click", resetShot);
+        stopBtn.addEventListener("click", () => {
+          stopCam();
+          statusEl.className = "status";
+        });
+        window.addEventListener("pagehide", stopCam);
+      })();
+    </script>
+  </body>
+</html>

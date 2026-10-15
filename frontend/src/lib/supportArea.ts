@@ -3,13 +3,6 @@ import { db } from "./supabase";
 import { ALL_AREAS, PROVINCES, normalizeProvince } from "./provinces";
 import type { Profile } from "./types";
 
-/**
- * Which provinces a Support officer is assigned to. Stored WITHOUT altering `profiles`:
- * one `settings` row per officer, key `support_area:<profile id>`, value { areas: string[] }.
- * - Admins always see everything.
- * - An officer with no row yet sees everything (so existing accounts keep working until an admin assigns them).
- * - "ALL" = whole world, including reports outside Indonesia or whose area is still unknown.
- */
 
 const PREFIX = "support_area:";
 
@@ -30,7 +23,6 @@ export async function loadAllAreas(): Promise<Record<string, string[]>> {
   return out;
 }
 
-/** Keep only "ALL" or valid province names. */
 export function cleanAreas(list: unknown[]): string[] {
   if (list.includes(ALL_AREAS)) return [ALL_AREAS];
   const valid = new Set<string>(PROVINCES);
@@ -47,7 +39,6 @@ export async function deleteAreas(profileId: string): Promise<void> {
   await db().from("settings").delete().eq("key", PREFIX + profileId);
 }
 
-/** What the caller may see: null = everything, otherwise the set of allowed provinces (possibly empty). */
 export type Scope = Set<string> | null;
 
 export async function scopeFor(user: Profile): Promise<Scope> {
@@ -56,7 +47,6 @@ export async function scopeFor(user: Profile): Promise<Scope> {
   return areas.includes(ALL_AREAS) ? null : new Set(areas);
 }
 
-/** Is a place (by its street-map province name) inside the caller's scope? Unknown places only for "ALL". */
 export function inScope(scope: Scope, provinceName: string | null | undefined): boolean {
   if (scope === null) return true;
   const p = normalizeProvince(provinceName);

@@ -4,15 +4,9 @@ import '../api.dart';
 import '../auto_refresh.dart';
 import '../theme.dart';
 
-/// "Status Wilayah" card (e.g. SIAGA BENCANA GEMPA · Aceh), set by Support/Admin.
-/// Same look as the other Beranda cards: white AppCard, 18 px title row with a count and chevron,
-/// a 40 px tinted icon circle per item. Fetches by itself (country-wide + the phone's province) and
-/// refreshes every minute while visible.
 class AreaStatusCard extends StatefulWidget {
   const AreaStatusCard({super.key, this.onOpen, this.showWhenEmpty = true, this.margin = EdgeInsets.zero});
-  /// Tap on the title row (Beranda: opens the Sekitar tab). Null = no chevron.
   final VoidCallback? onOpen;
-  /// false = render nothing when no status is active (Sekitar page).
   final bool showWhenEmpty;
   final EdgeInsets margin;
   @override
@@ -32,7 +26,6 @@ class AreaStatusCardState extends State<AreaStatusCard> with WidgetsBindingObser
     refresh();
   }
 
-  /// Pull-to-refresh entry point. Never throws.
   Future<void> refresh() async {
     try {
       await autoRefresh();
@@ -60,7 +53,6 @@ class AreaStatusCardState extends State<AreaStatusCard> with WidgetsBindingObser
       child: AppCard(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Title row — same as the old "Status Sekitar" card.
           InkWell(
             onTap: widget.onOpen,
             borderRadius: BorderRadius.circular(8),
@@ -94,7 +86,6 @@ class AreaStatusCardState extends State<AreaStatusCard> with WidgetsBindingObser
     );
   }
 
-  /// Plain icon + one line (loading / normal state), like the old Status Sekitar body.
   Widget _row({required IconData icon, required Color bg, required Color fg, required String title}) => Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Row(children: [
@@ -141,7 +132,6 @@ class AreaStatusCardState extends State<AreaStatusCard> with WidgetsBindingObser
     );
   }
 
-  /// Pill like StatusChip: icon + label, colour always paired with text.
   Widget _levelChip(String level, Color bg, Color fg) {
     final (icon, label) = switch (level) {
       'awas' => (Icons.emergency_outlined, 'Awas'),
@@ -159,14 +149,12 @@ class AreaStatusCardState extends State<AreaStatusCard> with WidgetsBindingObser
     );
   }
 
-  /// (accent, light background, text/icon colour) per level.
   static (Color, Color, Color) _colors(String level) => switch (level) {
         'awas' => (const Color(0xFFDC2626), const Color(0xFFFEE2E2), const Color(0xFF991B1B)),
         'siaga' => (const Color(0xFFF97316), const Color(0xFFFFEDD5), const Color(0xFF9A3412)),
         _ => (const Color(0xFFEAB308), const Color(0xFFFEF9C3), const Color(0xFF854D0E)),
       };
 
-  // Same wording as the dashboard (frontend/src/lib/areaStatusMeta.ts STATUS_LEVELS).
   static String _defaultMessage(String level) => switch (level) {
         'awas' => 'Bencana sedang atau segera terjadi. Warga diminta mengikuti arahan evakuasi.',
         'siaga' => 'Bencana bisa terjadi. Warga diminta bersiap dan menyiapkan tas siaga.',

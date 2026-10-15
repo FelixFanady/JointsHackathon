@@ -8,7 +8,6 @@ import { KIND_LABEL, VIEW_STATUS_LABEL, reportCode, timeAgo, viewStatus } from "
 import type { Report } from "@/lib/types";
 import Pager, { usePaged } from "@/components/Pager";
 
-/** Distinct values with counts, biggest first. */
 function tally(values: (string | null | undefined)[]): [string, number][] {
   const m = new Map<string, number>();
   values.forEach((v) => v && m.set(v, (m.get(v) ?? 0) + 1));
@@ -30,20 +29,15 @@ const KIND_TABS = [
 
 export default function ReportsClient() {
   const { reports, loading, error, reload } = useReports("hours=720");
-  // Default to "all" so EVERY report is visible on load — reports already
-  // reviewed (valid/false) were previously hidden behind the pending tab,
-  // which read as "not all reports show up".
   const [status, setStatus] = useState<string>("all");
   const [kind, setKind] = useState<string>("all");
   const [q, setQ] = useState("");
   const [selId, setSelId] = useState<string | null>(null);
-  const [city, setCity] = useState(""); // "" = semua, "__none" = belum diketahui
+  const [city, setCity] = useState("");
   const [district, setDistrict] = useState("");
   const [grouped, setGrouped] = useState(true);
   const [syncing, setSyncing] = useState(false);
 
-  // Turn coordinates into a street address + area for reports that don't have one yet.
-  // The street map allows ~1 request/s, so the server does a few per call; loop until done.
   const pendingRegions = reports.filter((r) => r.region_pending).length;
   const synced = useRef(false);
   useEffect(() => {
@@ -87,11 +81,9 @@ export default function ReportsClient() {
     );
   }, [reports, status, kind, q, city, district]);
 
-  // Paging over the filtered list; the current page is then grouped by area.
   const paged = usePaged(rows, [status, kind, q, city, district, grouped]);
   const pageRows = paged.slice;
 
-  // Group by area: kecamatan + kota (biggest first); reports without a known area last.
   const groups = useMemo(() => {
     const m = new Map<string, { label: string; sub: string | null; items: Report[] }>();
     for (const r of pageRows) {
@@ -136,7 +128,6 @@ export default function ReportsClient() {
 
   return (
     <>
-      {/* Summary bar — total reports always visible, so "missing" reports are obvious at a glance. */}
       <div className="report-stats" aria-label="Ringkasan laporan">
         <button className={`stat ${status === "all" ? "on" : ""}`} onClick={() => setStatus("all")}>
           <b>{counts.all}</b><span>Total laporan</span>
@@ -248,7 +239,6 @@ export default function ReportsClient() {
   );
 }
 
-/** Report detail as a centered pop-up over the list (closes on ✕, Esc, or a click outside). */
 function ReportModal({ report, onChanged, onClose }: { report: Report; onChanged: () => void; onClose: () => void }) {
   const [leaving, setLeaving] = useState(false);
   const close = useCallback(() => {

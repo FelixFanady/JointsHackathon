@@ -1,12 +1,6 @@
 import "server-only";
 import { db } from "./supabase";
 
-/**
- * "AI is checking this report right now" markers, so every officer's screen can disable the
- * AI button and show progress (and nobody starts a second, duplicate check).
- * Stored in `settings` as `ai_running:<report id>`; a marker older than STALE_MS is ignored,
- * so a crashed check can never lock a report forever.
- */
 
 const PREFIX = "ai_running:";
 const STALE_MS = 3 * 60_000;
@@ -29,7 +23,6 @@ export async function clearAiRunning(ids: string[]): Promise<void> {
     .then(() => undefined, () => undefined);
 }
 
-/** Report ids with a fresh "AI running" marker. */
 export async function loadAiRunning(): Promise<Set<string>> {
   const { data } = await db().from("settings").select("key,value").like("key", `${PREFIX}%`);
   const now = Date.now();

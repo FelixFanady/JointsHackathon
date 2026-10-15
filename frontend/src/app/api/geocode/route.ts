@@ -4,12 +4,6 @@ import { reverseDetailed, searchPlace } from "@/lib/geo";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Street-map helper for the address picker (admin/support only; server-side so the
- * OpenStreetMap usage policy — User-Agent, 1 req/s — is respected).
- *   GET ?lat=&lng=  -> { address, region }   (what is at this map point)
- *   GET ?q=         -> { lat, lng, label }   (where is this place)
- */
 export async function GET(req: Request) {
   const g = await guard(["admin", "support"]);
   if (g.error) return g.error;

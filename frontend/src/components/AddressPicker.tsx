@@ -4,17 +4,11 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import type { Pin } from "@/components/AddressPickerMap";
 
-// Leaflet touches `window`, so the map must never render on the server.
 const PickerMap = dynamic(() => import("@/components/AddressPickerMap"), {
   ssr: false,
   loading: () => <div className="pick-map pick-loading">Memuat peta…</div>,
 });
 
-/**
- * "Pilih di peta" for an address field: opens an OpenStreetMap, the admin clicks (or drags the pin)
- * and the street address at that point is looked up and handed to [onAddress]. [onPin] reports the
- * exact point so the region can be stored precisely. Search jumps the map to a place name.
- */
 export default function AddressPicker({
   initialPin,
   onAddress,

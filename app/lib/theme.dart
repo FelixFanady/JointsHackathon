@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Tokens from stitch_siagaku_emergency_design_system / DESIGN.md ("Siaga Klasik").
 class C {
   static const primary = Color(0xFF1D4ED8);
   static const primaryDark = Color(0xFF0037B0);
@@ -57,7 +56,6 @@ ThemeData buildTheme() {
   );
 }
 
-/// Primary pill button: 52px, civic blue.
 class PrimaryButton extends StatelessWidget {
   const PrimaryButton({super.key, required this.label, required this.onPressed, this.icon, this.loading = false, this.color = C.primary});
   final String label;
@@ -93,8 +91,6 @@ class PrimaryButton extends StatelessWidget {
   }
 }
 
-/// Secondary action (e.g. "Kembali") under a PrimaryButton: outlined white pill, same height and width,
-/// so it is clearly a button but never competes with the main action. Same look as the SOS flow's back button.
 class SecondaryButton extends StatelessWidget {
   const SecondaryButton({super.key, required this.label, required this.onPressed, this.icon = Icons.arrow_back_rounded});
   final String label;
@@ -138,7 +134,6 @@ class AppCard extends StatelessWidget {
       );
 }
 
-/// Status chip: color is always paired with an icon + Indonesian label.
 class StatusChip extends StatelessWidget {
   const StatusChip(this.status, {super.key});
   final String status;
@@ -181,14 +176,11 @@ String timeAgo(String iso) {
 
 String distanceLabel(double km) => km < 1 ? '${(km * 1000).round()} m' : '${km.toStringAsFixed(1)} km';
 
-/// Report ID seen by the citizen, Support and Admin: "LW-1A2B3C4D" (laporan warga) or "SOS-1A2B3C4D".
-/// Same rule as the web dashboard (frontend/src/lib/util.ts reportCode) — keep them identical.
 String reportCode(String id, String kind) {
   final hex = id.replaceAll(RegExp(r'[^0-9a-zA-Z]'), '');
   return '${kind == 'sos' ? 'SOS' : 'LW'}-${hex.substring(0, hex.length < 8 ? hex.length : 8).toUpperCase()}';
 }
 
-/// (icon, label, description) per incident category - mirrors the design's classification step.
 const incidentCategories = <String, List<(IconData, String, String)>>{
   'BENCANA ALAM': [
     (Icons.tsunami, 'Tsunami', 'Gelombang laut pasang'),

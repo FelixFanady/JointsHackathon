@@ -4,7 +4,6 @@ import { bad, coords, rateLimit } from "@/lib/mobile";
 
 export const dynamic = "force-dynamic";
 
-/** Public-safe nearby feed: no names, no NIK, coordinates rounded to ~100 m. False reports are hidden. */
 export async function GET(req: Request) {
   const rl = rateLimit(req, "nearby", 30);
   if (rl) return rl;

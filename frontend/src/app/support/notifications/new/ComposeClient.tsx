@@ -10,7 +10,6 @@ import { NOTICE_CATEGORIES, NOTICE_KINDS, type NoticeKindKey, type NoticeLevelKe
 
 type Mode = "all" | "region" | "picked";
 
-/** Distinct values with counts, biggest first. */
 function tally(values: (string | null | undefined)[]): [string, number][] {
   const m = new Map<string, number>();
   values.forEach((v) => v && m.set(v, (m.get(v) ?? 0) + 1));
@@ -19,7 +18,6 @@ function tally(values: (string | null | undefined)[]): [string, number][] {
 
 const MESSAGE_MAX = 800;
 
-/** Notifikasi › Buat Notifikasi: push a notification to citizens' phones. */
 export default function ComposeClient() {
   const sp = useSearchParams();
   const { users, loading } = useUsers(60000);
@@ -37,7 +35,6 @@ export default function ComposeClient() {
   const [err, setErr] = useState("");
   const [done, setDone] = useState("");
 
-  // Pre-fill from the Users page: ?to=nik,nik  or  ?city=…&district=…
   useEffect(() => {
     const to = sp.get("to");
     const c = sp.get("city");
@@ -189,7 +186,6 @@ export default function ComposeClient() {
             {recipients.length > 0 && (
               <div className="rc-avatars" aria-hidden>
                 {recipients.slice(0, 3).map((u) => (
-                  // Same avatar as the Users page: profile photo, else initials.
                   <span key={u.nik} title={u.full_name} className="av">
                     {u.photo ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -219,7 +215,6 @@ export default function ComposeClient() {
         </section>
       </form>
 
-      {/* Live preview of the phone notification */}
       <aside className="card compose-preview" aria-label="Pratinjau di HP warga">
         <h2>Pratinjau di HP warga</h2>
         <div className={`phone-notif ${level}`}>
@@ -232,7 +227,6 @@ export default function ComposeClient() {
           <dt>Bunyi</dt><dd>{kindInfo.sound}</dd>
           <dt>Penerima</dt><dd>{targetLabel} ({recipients.length})</dd>
         </dl>
-        {/* Send lives under the preview: what you see is what is sent. The button submits the form on the left. */}
         <div className="pv-send">
           {err && <div className="alert error">{err}</div>}
           {done && <div className="alert ok"><span className="msym sm">check_circle</span><span>{done} <Link href="/support/notifications">Lihat riwayat</Link></span></div>}

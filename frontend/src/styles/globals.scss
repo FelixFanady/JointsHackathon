@@ -1,16 +1,11 @@
 @use "tokens" as *;
-/* Fonts are self-hosted from /public/fonts (no request to fonts.googleapis.com / gstatic):
-   Inter variable (latin 47 KB, latin-ext loads only when such characters appear) and a
-   Material Symbols subset containing only the 87 icons the UI uses (9 KB instead of 316 KB).
-   Add a new icon? Regenerate the subset (see README note in public/fonts/ICONS.txt). */
 @font-face { font-family: "Inter"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(/fonts/inter-latin-ext.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 @font-face { font-family: "Inter"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(/fonts/inter-latin.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face {
   font-family: "Material Symbols Outlined";
   font-style: normal;
   font-weight: 400;
-  font-display: block; /* never flash icon names as text while loading */
-  // ?v= changes whenever the icon subset is regenerated, so browsers never keep showing an old font (icons as plain text).
+  font-display: block;
   src: url(/fonts/material-symbols.woff2?v=de494b4c) format("woff2");
 }
 
@@ -58,8 +53,6 @@ p {
   display: inline-block;
   vertical-align: middle;
   user-select: none;
-  // Same safety rules as Google's own icon CSS: ligatures on, and an icon missing from the subset
-  // stays a 1-em box instead of spilling its name ("TSUNAMI", "expand_more") across the layout.
   font-feature-settings: "liga";
   text-transform: none;
   letter-spacing: normal;
@@ -77,7 +70,6 @@ p {
   outline-offset: 2px;
 }
 
-/* ---------- Shell ---------- */
 .shell {
   display: grid;
   grid-template-columns: 264px 1fr;
@@ -115,12 +107,22 @@ p {
   nav {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
+    .nav-section {
+      margin: 14px 14px 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: $muted;
+      opacity: 0.8;
+      &:first-child { margin-top: 0; }
+    }
     a, .nav-btn {
       display: flex;
       align-items: center;
       gap: 12px;
-      min-height: 48px;
+      min-height: 44px;
       padding: 0 14px;
       border-radius: 14px;
       color: $muted;
@@ -129,9 +131,8 @@ p {
       &.active { background: $surface; color: $primary; font-weight: 600; }
     }
     .nav-btn { width: 100%; border: 0; background: none; font: inherit; font-weight: 500; cursor: pointer; text-align: left; }
-    // Dropdown group (e.g. "Notifikasi"): header button + indented sub-links.
     .nav-group-btn {
-      display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0 14px; border: 0; border-radius: 14px;
+      display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 14px; border: 0; border-radius: 14px;
       background: none; color: $muted; font: inherit; font-weight: 500; cursor: pointer; text-align: left;
       &:hover { background: $canvas; color: $text; }
       .chev { margin-left: auto; transition: transform 0.2s; }
@@ -186,12 +187,10 @@ p {
   p { color: $muted; margin-top: 4px; max-width: 640px; }
 }
 
-/* ---------- Primitives ---------- */
 .card {
   background: $card;
   border-radius: $r-card;
   padding: 20px;
-  // Visible edge on the light page background: a hairline border + a two-layer soft shadow.
   border: 1px solid $card-edge;
   box-shadow: 0 1px 2px rgba(20, 33, 61, 0.05), 0 6px 20px rgba(20, 33, 61, 0.06);
   & + .card { margin-top: 16px; }
@@ -250,7 +249,6 @@ p {
 textarea.input { height: auto; min-height: 120px; padding: 12px 16px; }
 select.input { appearance: none; }
 
-/* ---------- Custom dropdown (components/Select.tsx) — every dropdown in the dashboard ---------- */
 .input.select-btn {
   display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer;
   border: 1.5px solid $outline; background: #fff; padding-right: 10px;
@@ -310,7 +308,6 @@ select.input { appearance: none; }
   }
 }
 
-/* ---------- Tables ---------- */
 .table-wrap { overflow-x: auto; }
 table.table {
   width: 100%; border-collapse: collapse;
@@ -326,14 +323,12 @@ table.table {
 .bar { height: 8px; border-radius: 9999px; background: $surface; overflow: hidden; > i { display: block; height: 100%; background: $primary; border-radius: inherit; } &.ok > i { background: $ok; } }
 .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; .grow { flex: 1; min-width: 220px; } }
 
-/* ---------- Modal ---------- */
 .overlay {
   position: fixed; inset: 0; background: rgba(20, 33, 61, 0.4); display: grid; place-items: center; padding: 16px; z-index: 2000;
   .modal { background: #fff; border-radius: 24px; padding: 24px; width: 100%; max-width: 460px; box-shadow: $shadow-lg; max-height: 92vh; overflow-y: auto;
     h2 { font-size: 20px; margin-bottom: 4px; } .sub { color: $muted; font-size: 14px; margin-bottom: 20px; }
     .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; .btn { flex: 1; } }
   }
-  // Confirm / alert dialogs (components/Dialog.tsx): same card as every other modal.
   .modal.dialog { max-width: 440px;
     .dlg-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; h2 { margin: 0; font-size: 18px; line-height: 1.3; } }
     .dlg-ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none; background: $info-bg; color: $primary; }
@@ -348,33 +343,83 @@ table.table {
   }
 }
 
-/* ---------- Login ---------- */
 .login {
-  display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh;
-  .hero {
-    position: relative; overflow: hidden; padding: 56px; display: flex; flex-direction: column; justify-content: space-between;
-    background: linear-gradient(135deg, #eff6ff, #f2f3ff 50%, #d9e2ff);
-    &::before, &::after { content: ""; position: absolute; border-radius: 50%; filter: blur(60px); pointer-events: none; }
-    &::before { width: 380px; height: 380px; top: -120px; left: -120px; background: $primary-fixed; opacity: 0.5; }
-    &::after { width: 320px; height: 320px; bottom: -100px; right: -80px; background: #ffdad7; opacity: 0.35; }
-    > * { position: relative; z-index: 1; }
-    .chip { @include pill(rgba(255,255,255,.8), $primary); text-transform: uppercase; letter-spacing: 0.05em; }
-    h2 { font-size: 34px; line-height: 41px; letter-spacing: -0.02em; margin-bottom: 8px; }
-    p { color: #434655; max-width: 380px; }
-    .brand-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; .logo { width: 44px; height: 44px; border-radius: 12px; background: $primary; color: #fff; display: grid; place-items: center; } strong { font-size: 24px; } strong span { color: $primary; } }
-    footer { font-size: 13px; color: #434655; display: flex; justify-content: space-between; }
+  display: grid; grid-template-columns: minmax(380px, 5fr) 7fr; min-height: 100vh; background: $card;
+
+  .login-brand {
+    display: flex; align-items: center; gap: 12px;
+    .logo { width: 40px; height: 40px; border-radius: 10px; background: $primary; color: #fff; display: grid; place-items: center; }
+    strong { display: block; font-size: 18px; letter-spacing: -0.01em; }
+    small { display: block; font-size: 13px; opacity: 0.7; }
+    &.compact { display: none; }
   }
-  .panel { display: grid; place-items: center; padding: 32px; background: #faf8ff; }
-  .form-card { width: 100%; max-width: 440px; background: #fff; border-radius: 24px; padding: 40px; box-shadow: $shadow-sm;
-    .key { width: 48px; height: 48px; border-radius: 12px; background: $primary-fixed; color: $primary; display: grid; place-items: center; margin-bottom: 16px; }
-    h1 { font-size: 26px; letter-spacing: -0.015em; margin-bottom: 4px; } .lead { color: $muted; margin-bottom: 24px; font-size: 14px; }
+
+  .login-side {
+    display: flex; flex-direction: column; justify-content: space-between; gap: 40px;
+    padding: 48px 56px; background: #0f1a33; color: #e7ebf5;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+    .login-brand .logo { background: #fff; color: #0f1a33; }
+  }
+
+  .login-copy {
+    max-width: 440px;
+    h2 { font-size: 30px; line-height: 1.2; letter-spacing: -0.02em; font-weight: 700; color: #fff; margin-bottom: 14px; text-wrap: balance; }
+    p { color: #aab3c8; font-size: 15px; line-height: 1.6; }
+  }
+
+  .levels {
+    margin-top: 36px; display: grid; gap: 1px; border-radius: 12px; overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.08);
+    .lv {
+      display: grid; grid-template-columns: 10px 84px 1fr; align-items: center; gap: 12px;
+      padding: 11px 14px; background: #0f1a33; font-size: 13px;
+      i { width: 10px; height: 10px; border-radius: 3px; background: var(--c); }
+      b { color: #fff; font-weight: 600; }
+      span { color: #8e98af; }
+    }
+    .lv-normal { --c: #16a34a; } .lv-waspada { --c: #eab308; } .lv-siaga { --c: #f97316; } .lv-awas { --c: #dc2626; }
+  }
+
+  .login-foot {
+    display: flex; flex-direction: column; gap: 14px; font-size: 13px;
+    .sos { display: flex; align-items: flex-start; gap: 10px; color: #c9d0df; line-height: 1.5;
+      .msym { color: #f87171; margin-top: 1px; } b { color: #fff; } }
+    small { color: #6f7a93; }
+  }
+
+  .login-main { display: grid; place-items: center; padding: 48px 32px; }
+  .login-form {
+    width: 100%; max-width: 380px;
+    .login-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+    .login-fields:disabled .input { opacity: 0.7; }
+    .login-fields:disabled .btn.primary { opacity: 1; cursor: progress; }
+    h1 { font-size: 28px; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .lead { color: $muted; font-size: 14px; margin-bottom: 28px; }
     .pw { position: relative; .input { padding-right: 52px; } button { position: absolute; right: 6px; top: 4px; } }
-    .remember { display: flex; align-items: center; gap: 10px; font-size: 14px; margin-bottom: 20px; input { width: 20px; height: 20px; accent-color: $primary; } }
+    .caps { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 12px; font-weight: 600; color: $warn-text; }
+    .remember {
+      display: flex; align-items: flex-start; gap: 10px; font-size: 14px; margin: 4px 0 22px; cursor: pointer;
+      input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: $primary; flex: none; }
+      small { display: block; color: $muted; font-size: 12px; margin-top: 1px; }
+    }
+    .btn.block { min-height: 48px; font-size: 15px; }
+    .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.4); border-top-color: #fff; animation: login-spin 0.7s linear infinite; }
+    .help { margin-top: 24px; padding-top: 20px; border-top: 1px solid $card-edge; color: $muted; font-size: 13px; line-height: 1.55; }
   }
 }
-@media (max-width: 900px) { .login { grid-template-columns: 1fr; .hero { display: none; } } }
+@keyframes login-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .login .login-form .spin { animation-duration: 2s; } }
+@media (max-width: 960px) {
+  .login { grid-template-columns: 1fr;
+    .login-side { display: none; }
+    .login-main { align-items: start; padding-top: 56px; }
+    .login-brand.compact { display: flex; margin-bottom: 32px; }
+  }
+}
 
-/* ---------- Reports ---------- */
 .split { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px; align-items: start; }
 .rcard {
   display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; border: 2px solid transparent;
@@ -390,7 +435,7 @@ table.table {
 }
 .detail {
   position: sticky; top: 16px; background: #fff; border-radius: $r-card; padding: 20px; box-shadow: $shadow-md;
-  max-height: calc(100vh - 32px); overflow-y: auto; // panel grows with the notify form; keep it scrollable while sticky
+  max-height: calc(100vh - 32px); overflow-y: auto;
   .photo { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 14px; background: $surface; margin-bottom: 14px; }
   dl { display: grid; grid-template-columns: 96px 1fr; gap: 8px 12px; margin: 14px 0; font-size: 14px; dt { color: $muted; } dd { margin: 0; word-break: break-word; } }
   .actions { display: flex; gap: 10px; margin-top: 16px; .btn { flex: 1; } }
@@ -415,7 +460,6 @@ table.table {
 }
 .notify-hint { display: flex; align-items: center; gap: 6px; margin-top: 12px; color: $muted; font-size: 13px; }
 
-/* ---------- Report ID (LW-… / SOS-…) ---------- */
 .rid { display: inline-block; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
   color: $muted; background: $surface; border-radius: 6px; padding: 1px 6px; vertical-align: middle; }
 .report-id { display: inline-flex; align-items: center; gap: 8px; margin: 6px 0 4px; padding: 4px 4px 4px 10px; border-radius: 10px; background: $surface; font-size: 13px;
@@ -424,7 +468,6 @@ table.table {
   .cp { display: inline-flex; align-items: center; gap: 4px; border: 0; background: #fff; color: $primary; font: inherit; font-size: 12px; font-weight: 600; border-radius: 8px; padding: 4px 8px; cursor: pointer; &:hover { background: $canvas; } }
 }
 
-/* ---------- Status Wilayah ---------- */
 $st-waspada: #eab308; $st-waspada-bg: #fef9c3; $st-waspada-fg: #854d0e;
 $st-siaga: #f97316; $st-siaga-bg: #ffedd5; $st-siaga-fg: #9a3412;
 $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
@@ -467,8 +510,6 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
 }
 .check-row { display: flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer;
   input { width: 18px; height: 18px; accent-color: $primary; flex: none; } }
-// Mirrors the app's banner (app/lib/widgets/area_status_banner.dart): white card, thin level accent,
-// tinted icon tile, level pill, location line, message in a grey box.
 .st-banner { display: flex; gap: 12px; padding: 14px 16px 14px 14px; border-radius: 20px; background: #fff; box-shadow: $shadow-sm;
   border: 1px solid $surface; border-left: 4px solid;
   .sb-ic { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; flex: none; font-size: 26px; }
@@ -482,7 +523,6 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
   &.awas { border-left-color: $st-awas; .sb-ic { background: $st-awas-bg; color: $st-awas-fg; } }
 }
 
-/* ---------- Notifikasi pages ---------- */
 .report-stats.four { grid-template-columns: repeat(4, 1fr); }
 .badge {
   &.lvl-danger { @include pill($danger-bg, $danger); }
@@ -491,7 +531,6 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
 }
 .compose-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); gap: 20px; align-items: start;
   @media (max-width: 1000px) { grid-template-columns: 1fr; } }
-// Form: three sections (kategori + bunyi · penerima · isi) with one spacing rhythm.
 .compose-form { padding: 0;
   .cf-sec { padding: 22px 24px; display: flex; flex-direction: column; gap: 20px; & + .cf-sec { border-top: 1px solid $surface; } }
   .field { margin: 0; gap: 10px; > label { font-weight: 600; font-size: 14px; color: $text; } .hint { margin-top: -2px; } .hint.counter { align-self: flex-end; margin-top: -4px; font-variant-numeric: tabular-nums; } }
@@ -539,7 +578,6 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
   }
 }
 
-/* ---------- Pager (show entries + prev/next) ---------- */
 .pager {
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 12px 16px; font-size: 14px; color: $muted;
   .pager-size { display: inline-flex; align-items: center; gap: 8px;
@@ -560,19 +598,17 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
 .card > .pager { border-top: 1px solid $surface; }
 .pager.bare { padding: 8px 0 0; }
 
-/* Laporan: full-width list; the detail opens as a pop-up (.report-modal). */
 .report-list {
   > div { display: flex; flex-direction: column; }
   .region-group { display: flex; flex-direction: column; }
-  .rcard .foot > span:first-child { white-space: nowrap; flex: none; } // reporter name never breaks onto two lines
+  .rcard .foot > span:first-child { white-space: nowrap; flex: none; }
 }
 .overlay .modal.report-modal {
   max-width: min(780px, 96vw); padding: 0;
-  &:has(.detail-cols.has-side) { max-width: min(1120px, 96vw); } // valid report: room for the alert panel beside it
+  &:has(.detail-cols.has-side) { max-width: min(1120px, 96vw); }
   .detail { position: static; box-shadow: none; max-height: none; overflow: visible; border-radius: 24px; padding: 28px 32px; }
   .detail dl { grid-template-columns: 110px 1fr; }
   .detail-cols { display: block; }
-  // Wide screens: report + AI + decision left, "Kirim peringatan" right (only once the report is valid).
   @media (min-width: 980px) {
     .detail-cols.has-side { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 28px; align-items: start; }
     .col-side .notify-box { margin-top: 14px; }
@@ -612,7 +648,6 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
   .disc { margin-top: 10px; font-size: 12px; font-style: italic; color: $muted; }
 }
 
-/* ---------- Map ---------- */
 .map-page { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; }
 .map-page.with-panel { grid-template-columns: 1fr 400px; }
 .map-canvas { position: relative; min-height: 0; .leaflet-container { width: 100%; height: 100%; font-family: inherit; z-index: 0; } }
@@ -646,7 +681,7 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
 .mk {
   display: grid; place-items: center; border-radius: 50%; color: #fff; font-weight: 700; font-size: 13px; border: 2px solid rgba(255, 255, 255, 0.95);
   box-shadow: 0 0 0 6px var(--glow, rgba(229, 56, 59, 0.2)), $shadow-md;
-  span { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45); } // count stays readable on any category colour / pie
+  span { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45); }
   &.crit { animation: pulse 1.6s ease-out infinite; }
   &.done { border-color: $ok; border-width: 3px; }
 }
@@ -659,12 +694,11 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
 
 @media (max-width: 800px) {
   .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; overflow: visible; }
-  .sidebar { flex-direction: row; flex-wrap: wrap; padding: 12px; nav { flex-direction: row; flex-wrap: wrap; } .me { display: none; } }
+  .sidebar { flex-direction: row; flex-wrap: wrap; padding: 12px; nav { flex-direction: row; flex-wrap: wrap; .nav-section { display: none; } } .me { display: none; } }
   .page { padding: 16px; }
 }
 
 
-/* ---------- Loading skeleton ---------- */
 .skeleton {
   display: block;
   border-radius: 8px;
@@ -688,13 +722,7 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
   white-space: nowrap;
 }
 
-/* =======================================================================
-   SIAGAKU UI ENHANCEMENTS (profile editing, support tabs, animations)
-   One appended block so it can be adjusted or removed to restore the old
-   look without hunting through the file above.
-   ======================================================================= */
 
-/* ---- Modal: entrance / exit animation + close button ---- */
 .overlay {
   animation: overlay-in 0.18s ease both;
   &.leaving { animation: overlay-out 0.16s ease both; }
@@ -714,24 +742,19 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
 @keyframes modal-in { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: none; } }
 @keyframes modal-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(8px) scale(0.98); } }
 
-/* ---- Toast pop ---- */
 .toast { animation: toast-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) both; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
-/* ---- Support: centered view switch; sidebar stays stable ---- */
-/* The support <main> is a fixed-height column: tabs header on top, body below.
-   This keeps the frame identical whether you are on Laporan or Peta, so the
-   layout no longer jumps when you click between them. */
 .support-main {
   display: flex;
   flex-direction: column;
-  height: 100vh;      /* matches .shell height; .main's own overflow is neutralised below */
+  height: 100vh;
   min-height: 0;
   overflow: hidden;
 }
 .support-switch {
   position: relative;
-  flex: none;                 /* fixed header, never scrolls */
+  flex: none;
   display: flex; justify-content: flex-end; align-items: center;
   min-height: 64px;
   padding: 10px 20px;
@@ -741,7 +764,6 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
   .tabs { box-shadow: $shadow-sm; }
   .tabs a { padding: 0 20px; transition: color 0.15s, background 0.15s; }
 }
-/* The scroll lives on the body, not on the whole main, so the tabs stay put. */
 .support-body {
   flex: 1;
   min-height: 0;
@@ -749,9 +771,7 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
   display: flex;
   flex-direction: column;
 }
-/* Reports view keeps the normal .page padding and scrolls inside support-body. */
 .support-body > .page { width: 100%; }
-/* Map view fills the area under the tabs exactly, with no page scroll. */
 .map-flush { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .map-flush .map-page { flex: 1; min-height: 0; }
 .map-flush .map-canvas { min-height: 0; }
@@ -762,13 +782,11 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
 }
 
 @media (max-width: 800px) {
-  /* On the stacked mobile shell the viewport-height trick would clip; let it grow. */
   .support-main { height: auto; min-height: 60vh; overflow: visible; }
   .support-body { overflow: visible; }
   .map-flush { min-height: 70vh; }
 }
 
-/* Neutral loader shown while a support view loads. */
 .support-loading {
   flex: 1; min-height: 240px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
@@ -777,7 +795,6 @@ $st-awas: #dc2626; $st-awas-bg: #fee2e2; $st-awas-fg: #991b1b;
   p { font-size: 14px; }
 }
 
-/* ---- Citizens table: profile data cells ---- */
 table.table {
   .av.clickable { cursor: zoom-in; transition: transform 0.1s; &:hover { transform: scale(1.08); } }
   .nowrap { white-space: nowrap; }
@@ -787,7 +804,6 @@ table.table {
   }
 }
 
-/* ---- Profile preview modal ---- */
 .profile-view {
   display: flex; gap: 18px; align-items: flex-start; margin-bottom: 16px;
   .big-photo {
@@ -802,7 +818,6 @@ table.table {
 }
 @media (max-width: 520px) { .profile-view { flex-direction: column; align-items: center; dl { grid-template-columns: 100px 1fr; } } }
 
-/* ---- Table: avatar + stacked contact ---- */
 table.table {
   .person .av { overflow: hidden; img.av, img { width: 100%; height: 100%; object-fit: cover; } }
   .person img.av { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
@@ -814,7 +829,6 @@ table.table {
   td .muted { color: $muted; }
 }
 
-/* ---- Profile modal: photo + 2-col grid ---- */
 .photo-edit {
   display: flex; align-items: center; gap: 18px; margin-bottom: 20px;
   padding: 16px; border-radius: 18px; background: $canvas; border: 1px solid $surface;
@@ -833,7 +847,6 @@ table.table {
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
 @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
 
-/* ---- Row hover lift (subtle, informative on interaction) ---- */
 table.table tbody tr { transition: background 0.12s; }
 .rcard { transition: box-shadow 0.15s, transform 0.08s, border-color 0.15s; &:hover { transform: translateY(-1px); } }
 .btn.primary { transition: opacity 0.15s, transform 0.05s, box-shadow 0.15s; &:hover { box-shadow: 0 6px 18px rgba(29, 78, 216, 0.28); } }
@@ -843,7 +856,6 @@ table.table tbody tr { transition: background 0.12s; }
   .rcard:hover { transform: none; }
 }
 
-/* ---- Support â€º Laporan: summary + polish ---- */
 .report-stats {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -895,7 +907,6 @@ table.table tbody tr { transition: background 0.12s; }
 
 .btn.ghost.sm { padding: 6px 14px; font-size: 13px; margin-top: 10px; }
 
-/* Skeleton cards while first load is in flight â€” frame stays the same shape. */
 .rcard-skel-list { display: flex; flex-direction: column; gap: 12px; }
 .rcard.skel { pointer-events: none; display: flex; flex-direction: column; }
 
@@ -904,12 +915,7 @@ table.table tbody tr { transition: background 0.12s; }
 }
 
 
-/* ============================================================
-   Support map: emergency notifications + all-users directory
-   (appended override block â€” safe to tune/remove as one unit)
-   ============================================================ */
 
-/* right-aligned tools (bell) in the support header */
 .support-tools {
   display: flex; align-items: center; gap: 10px;
 }
@@ -917,7 +923,6 @@ table.table tbody tr { transition: background 0.12s; }
   .support-tools { margin-left: 8px; }
   .support-switch { flex-wrap: wrap; gap: 8px; }
 }
-/* right-aligned control group in the map overlay */
 .map-filters .pnl.right {
   margin-left: auto;
   display: flex; align-items: center; gap: 10px;
@@ -936,7 +941,6 @@ table.table tbody tr { transition: background 0.12s; }
   &.on .pill { background: rgba(255,255,255,0.25); color: #fff; }
 }
 
-/* ---- Notification bell + popover ---- */
 .notif-wrap { position: relative; }
 .notif-bell {
   position: relative; width: 40px; height: 40px; border-radius: 12px;
@@ -1002,7 +1006,6 @@ table.table tbody tr { transition: background 0.12s; }
   .msym.xs { font-size: 14px; }
 }
 
-/* ---- All-users directory slide-over ---- */
 .users-panel {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 2000;
   width: 360px; max-width: 92vw;
@@ -1048,9 +1051,6 @@ table.table tbody tr { transition: background 0.12s; }
   .notif-pop, .users-panel { animation: none; }
 }
 
-/* ============================================================
-   Support users window (/support/users): bulk bar, presence dot, sent history
-   ============================================================ */
 .bulk-bar {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   margin: 0 0 12px; padding: 10px 14px; border-radius: 14px;
@@ -1076,11 +1076,9 @@ a.icon-btn { display: inline-grid; place-items: center; }
   p { font-size: 13px; margin: 2px 0 4px; color: $text; }
 }
 
-/* Region (street map) filters + recipients picker in the support users window */
 .toolbar .select-sm { width: auto; max-width: 240px; flex: none; padding-right: 32px; cursor: pointer; }
 .region-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 560px) { .region-pick { grid-template-columns: 1fr; } }
-// Recipient summary under "Penerima": icon, count + who, initials of the first three.
 .recipients {
   display: flex; align-items: center; gap: 12px;
   margin: 0 0 16px; padding: 10px 12px 10px 10px; border-radius: 14px;
@@ -1089,7 +1087,6 @@ a.icon-btn { display: inline-grid; place-items: center; }
   .rc-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3;
     b { font-size: 14px; font-weight: 700; }
     small { font-size: 12px; color: $muted; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
-  // Same avatar as the Users page (.person .av): light blue + dark blue initials, or the profile photo.
   .rc-avatars { display: flex; flex: none; padding-left: 8px;
     span { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; margin-left: -8px; overflow: hidden;
       background: $primary-fixed; color: $primary-dark; font-size: 12px; font-weight: 700; border: 2px solid #fff; box-shadow: 0 1px 2px rgba(20, 33, 61, 0.08);
@@ -1099,7 +1096,6 @@ a.icon-btn { display: inline-grid; place-items: center; }
 }
 .tabs button:disabled { opacity: .45; cursor: not-allowed; }
 
-/* Address picker (click on OpenStreetMap to fill the address) */
 .addr-picker { margin-top: 8px; }
 .pick-panel { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; animation: pop-in 0.16s ease-out; }
 .pick-search { display: flex; gap: 8px; .input { flex: 1; min-width: 0; } .btn { margin-top: 0; flex: none; } }
@@ -1114,10 +1110,7 @@ a.icon-btn { display: inline-grid; place-items: center; }
   &.ok { color: $ok; } &.bad { color: $danger; }
 }
 
-/* ============================================================
-   Account on/off switch (admin > Pengguna): sliding knob, row fade + flash
-   ============================================================ */
-.status-cell { display: inline-flex; align-items: center; gap: 10px; }
+.status-cell { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
 .switch {
   position: relative; flex: none; width: 46px; height: 26px; padding: 0; cursor: pointer;
   border: 0; border-radius: 9999px; background: $outline;
@@ -1126,9 +1119,9 @@ a.icon-btn { display: inline-grid; place-items: center; }
   .knob {
     position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
     background: #fff; box-shadow: 0 1px 4px rgba(20, 33, 61, 0.35);
-    transition: transform 0.34s cubic-bezier(0.34, 1.56, 0.64, 1); /* springy overshoot */
+    transition: transform 0.34s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  &:active .knob { width: 24px; }                /* knob stretches while pressed */
+  &:active .knob { width: 24px; }
   &.on { background: $ok; box-shadow: 0 0 0 4px $ok-bg; }
   &.on .knob { transform: translateX(20px); }
   &.on:active .knob { transform: translateX(16px); }
@@ -1157,11 +1150,6 @@ a.icon-btn { display: inline-grid; place-items: center; }
   .table tbody tr.flash-on, .table tbody tr.flash-off, .switch.busy .knob::after { animation: none; }
 }
 
-/* =======================================================================
-   Slim, integrated scrollbars (single override block -- delete it to restore
-   the browser default). The thumb floats inside the rounded edge instead of
-   a full-height grey rail with arrow buttons.
-   ======================================================================= */
 * { scrollbar-width: thin; scrollbar-color: rgba(20, 33, 61, 0.22) transparent; }
 @supports selector(::-webkit-scrollbar) {
   * { scrollbar-width: auto; scrollbar-color: auto; }
@@ -1175,7 +1163,6 @@ a.icon-btn { display: inline-grid; place-items: center; }
     &:hover { background: rgba(20, 33, 61, 0.42); background-clip: padding-box; }
     &:active { background: rgba(29, 78, 216, 0.6); background-clip: padding-box; }
   }
-  /* Modal: keep the rail clear of the rounded corners */
   .overlay .modal::-webkit-scrollbar { width: 14px; }
   .overlay .modal::-webkit-scrollbar-track { margin: 22px 0; }
   .overlay .modal::-webkit-scrollbar-thumb { border-width: 4px; }

@@ -19,7 +19,6 @@ const ONLINE_MS = 15 * 60_000;
 const initials = (n: string) => n.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
 const recent = (iso: string | null, ms: number) => !!iso && Date.now() - +new Date(iso) < ms;
 
-/** Distinct values with counts, biggest first. */
 function tally(values: (string | null | undefined)[]): [string, number][] {
   const m = new Map<string, number>();
   values.forEach((v) => v && m.set(v, (m.get(v) ?? 0) + 1));
@@ -31,15 +30,13 @@ export default function UsersClient() {
   const { users, loading, error, reload } = useUsers(15000);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number][0]>("all");
-  const [regionCity, setRegionCity] = useState(""); // table filter
+  const [regionCity, setRegionCity] = useState("");
   const [regionDistrict, setRegionDistrict] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
   const [toast] = useState("");
   const [syncing, setSyncing] = useState(false);
 
-  // Ask the server to resolve districts/cities from the street map (OpenStreetMap) for users
-  // that don't have one yet. It does a few per call (service allows ~1 req/s), so loop until done.
   const synced = useRef(false);
   const pendingCount = users.filter((u) => u.region_pending).length;
   useEffect(() => {
@@ -99,7 +96,6 @@ export default function UsersClient() {
   const names = (nik: string) => users.find((u) => u.nik === nik)?.full_name ?? nik;
   void names;
 
-  // Sending now lives on its own page (Notifikasi › Buat Notifikasi); these open it pre-filled.
   function openCompose(m: "all" | "region" | "picked", opts?: { picked?: string[] }) {
     const p = new URLSearchParams();
     if (m === "picked") p.set("to", (opts?.picked ?? [...picked]).join(","));

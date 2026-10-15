@@ -1,21 +1,3 @@
-"""SiagaKu face matching service -- INTERNAL ONLY.
-
-Only the Next.js backend talks to this service. The phone never does, and nothing
-here ever sends a face image back to a citizen:
-
-  * Stateless: images arrive in the request, are processed in memory and dropped.
-    Nothing is written to disk, nothing is cached, image bytes are never logged.
-  * Every request must carry the shared secret in `x-cv-key` (CV_API_KEY env var).
-    The service refuses to start without it.
-  * Binds to 127.0.0.1 only. Do not put it behind a public port.
-
-Models (OpenCV Zoo, Apache-2.0): YuNet for detection + landmarks, SFace for the
-128-d embedding. SFace cosine similarity: >= 0.363 is OpenCV's "same person" cut-off
-on LFW; the backend applies a stricter threshold on top of the raw score.
-
-Run:  set CV_API_KEY=<long random string>
-      python face_service.py
-"""
 from __future__ import annotations
 
 import base64
@@ -24,7 +6,6 @@ import os
 import threading
 from pathlib import Path
 
-# Cap decoded image size BEFORE cv2 is imported (decompression-bomb guard).
 os.environ.setdefault("OPENCV_IO_MAX_IMAGE_PIXELS", str(40_000_000))
 
 import cv2  # noqa: E402
@@ -38,20 +19,20 @@ DET_MODEL = HERE / "models" / "face_detection_yunet_2023mar.onnx"
 REC_MODEL = HERE / "models" / "face_recognition_sface_2021dec.onnx"
 
 API_KEY = os.environ.get("CV_API_KEY", "")
-HOST = "127.0.0.1"
+HOST = os.environ.get("CV_HOST", "127.0.0.1")
 PORT = int(os.environ.get("CV_PORT", "8100"))
 
-MAX_BODY = 8_000_000      # bytes, whole JSON request
-MAX_B64 = 3_500_000       # chars, one image
-MAX_EDGE = 640            # images are downscaled to this before detection
-STORE_EDGE = 320          # enrolled reference photo is stored at this size
-DET_SCORE = 0.80          # YuNet confidence to accept a face at all
-GOOD_SCORE = 0.88         # stricter, for the live selfie
-MIN_FACE_PX = 70          # live selfie: face box must be at least this wide (after downscale)
-MIN_REF_FACE_PX = 40      # stored reference: may be a small website photo
-SECOND_FACE_RATIO = 0.30  # a 2nd face >= 30% of the main face's area = "multiple faces"
-MIN_SHARPNESS = 35.0      # variance of Laplacian on the face crop
-MIN_BRIGHTNESS = 45.0     # mean gray level on the face crop
+MAX_BODY = 8_000_000
+MAX_B64 = 3_500_000
+MAX_EDGE = 640
+STORE_EDGE = 320
+DET_SCORE = 0.80
+GOOD_SCORE = 0.88
+MIN_FACE_PX = 70
+MIN_REF_FACE_PX = 40
+SECOND_FACE_RATIO = 0.30
+MIN_SHARPNESS = 35.0
+MIN_BRIGHTNESS = 45.0
 MAX_BRIGHTNESS = 225.0
 
 if not API_KEY or len(API_KEY) < 24:
@@ -62,7 +43,6 @@ for m in (DET_MODEL, REC_MODEL):
 
 _detector = cv2.FaceDetectorYN.create(str(DET_MODEL), "", (320, 320), DET_SCORE, 0.3, 50)
 _recognizer = cv2.FaceRecognizerSF.create(str(REC_MODEL), "")
-# The OpenCV objects keep per-call state (input size); FastAPI runs sync handlers in a thread pool.
 _lock = threading.Lock()
 
 
@@ -71,21 +51,20 @@ class BadImage(Exception):
 
 
 def decode(b64: str) -> np.ndarray:
-    """base64 (optionally a data: URI) -> BGR image, downscaled to MAX_EDGE. Only JPEG/PNG/WebP."""
     if b64.startswith("data:"):
         b64 = b64.split(",", 1)[-1]
     if len(b64) > MAX_B64:
         raise BadImage("too_large")
     try:
         raw = base64.b64decode(b64, validate=True)
-    except Exception as e:  # binascii.Error / ValueError
+    except Exception as e:
         raise BadImage("invalid_image") from e
     is_jpeg = raw[:3] == b"\xff\xd8\xff"
     is_png = raw[:8] == b"\x89PNG\r\n\x1a\n"
     is_webp = raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"
     if not (is_jpeg or is_png or is_webp):
         raise BadImage("invalid_image")
-    img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)  # applies EXIF orientation
+    img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
     if img is None or img.size == 0:
         raise BadImage("invalid_image")
     h, w = img.shape[:2]
@@ -98,7 +77,6 @@ def decode(b64: str) -> np.ndarray:
 
 
 def detect(img: np.ndarray) -> list[np.ndarray]:
-    """Faces (YuNet rows: x, y, w, h, 5 landmarks, score), largest first. Call under _lock."""
     h, w = img.shape[:2]
     _detector.setInputSize((w, h))
     _, faces = _detector.detect(img)
@@ -108,7 +86,6 @@ def detect(img: np.ndarray) -> list[np.ndarray]:
 
 
 def quality(img: np.ndarray, faces: list[np.ndarray], *, live: bool) -> str | None:
-    """None when the main face is usable, else a reason code."""
     if not faces:
         return "no_face"
     main = faces[0]
@@ -136,7 +113,6 @@ def quality(img: np.ndarray, faces: list[np.ndarray], *, live: bool) -> str | No
 
 
 def embed(img: np.ndarray, face: np.ndarray) -> np.ndarray:
-    """Aligned 112x112 crop -> SFace feature. Call under _lock."""
     return _recognizer.feature(_recognizer.alignCrop(img, face))
 
 
@@ -145,13 +121,12 @@ def encode_jpeg(img: np.ndarray, edge: int) -> str:
     scale = edge / max(h, w)
     if scale < 1:
         img = cv2.resize(img, (round(w * scale), round(h * scale)), interpolation=cv2.INTER_AREA)
-    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 82])  # re-encode also strips EXIF/GPS
+    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 82])
     if not ok:
         raise BadImage("invalid_image")
     return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
-# ---------------------------------------------------------------------------- HTTP
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -186,14 +161,13 @@ def health() -> dict:
 
 @app.post("/v1/enroll", dependencies=[Depends(require_key)])
 def enroll(body: EnrollIn) -> dict:
-    """Check a live selfie is a usable reference. Returns the re-encoded photo to STORE (backend only)."""
     try:
         img = decode(body.image)
         with _lock:
             faces = detect(img)
             reason = quality(img, faces, live=True)
             if reason is None:
-                embed(img, faces[0])  # fails loudly now rather than at the first verify
+                embed(img, faces[0])
         if reason:
             return {"ok": False, "reason": reason}
         return {"ok": True, "photo_jpeg_b64": encode_jpeg(img, STORE_EDGE)}
@@ -203,7 +177,6 @@ def enroll(body: EnrollIn) -> dict:
 
 @app.post("/v1/compare", dependencies=[Depends(require_key)])
 def compare(body: CompareIn) -> dict:
-    """Live selfie vs stored reference -> cosine similarity only. No image ever leaves this function."""
     try:
         probe = decode(body.probe)
     except BadImage as e:

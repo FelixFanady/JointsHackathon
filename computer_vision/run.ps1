@@ -1,5 +1,3 @@
-# Starts the face service on 127.0.0.1:8100 with the CV_API_KEY from frontend/.env.local
-# (one key, shared by both sides). First run creates .venv, installs pinned deps, downloads models.
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
 $envFile = Join-Path $here '..\frontend\.env.local'

@@ -21,10 +21,8 @@ export async function POST(req: Request) {
   const pos = coords(b);
   if (!pos) return bad("Lokasi tidak valid.");
   const category = SOS_CATEGORIES.includes(b?.category) ? b.category : "Darurat";
-  // "Bencana Lainnya": the citizen types what happened (app limits it to 60 chars).
   const description = category === "Bencana Lainnya" ? maskPii(cleanText(b?.description, 60)) || null : null;
 
-  // One person = one SOS per 10 minutes, so a single user cannot inflate the "15 people" counter.
   const since = new Date(Date.now() - 10 * 60_000).toISOString();
   const { data: dup } = await db().from("reports").select("id").eq("kind", "sos").eq("nik", c.nik).gte("created_at", since).limit(1);
   if (dup?.length) return NextResponse.json({ id: dup[0].id, code: reportCode({ id: dup[0].id, kind: "sos" }), duplicate: true });
@@ -48,18 +46,12 @@ export async function POST(req: Request) {
     .select("id")
     .single();
   if (error) return bad("Gagal mengirim SOS. Coba lagi.", 500);
-  // Mark the citizen active and remember where they fired from, so Support can
-  // notify by recency and show each user's area. Best-effort, never blocks.
   void recordLogin(c.nik);
   void recordLocation(c.nik, pos.lat, pos.lng);
-  // SOS "Penjambretan": warn citizens within 2 km right away (not verified yet, says so), with the photo.
   if (isInstantAlert(category)) {
     after(() => instantCrimeAlert({ id: data.id, category, lat: pos.lat, lng: pos.lng, address: cleanText(b?.address, 200) || null, photo_url: photo, nik: c.nik }));
   }
-  // AI + BMKG check in the background (after the response is sent): auto-alert only if both confirm.
-  // Goes through the AI queue, so a busy AI retries later instead of skipping the check.
   after(async () => { await enqueue(data.id, "triage"); await kickQueue(); });
-  // Street address + kecamatan/kota for the console (groups reports by area). Background, best-effort.
   after(() => resolveReportRegion({ id: data.id, lat: pos.lat, lng: pos.lng, address: cleanText(b?.address, 200) || null }));
   return NextResponse.json({ id: data.id, code: reportCode({ id: data.id, kind: "sos" }) });
 }

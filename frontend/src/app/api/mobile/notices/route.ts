@@ -6,12 +6,6 @@ import { recordNoticeFetch } from "@/lib/citizenActivity";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Inbox for the mobile app: notifications Support sent to this citizen (plus broadcasts).
- * POST so the NIK stays out of URLs/logs (same as my-reports). The app polls this; each
- * call also stamps `notices_fetched_at` so Support can see the app is receiving.
- * Body: { nik, since?: ISO } -> { notices: [{ id, title, message, level, kind?, created_at, by }] }
- */
 export async function POST(req: Request) {
   const rl = rateLimit(req, "notices", 40);
   if (rl) return rl;
@@ -29,8 +23,8 @@ export async function POST(req: Request) {
     title: n.title,
     message: n.message,
     level: n.level,
-    ...(n.kind ? { kind: n.kind } : {}), // absent on old notices: the app then guesses from the words
-    ...(n.photo_url ? { photo_url: n.photo_url } : {}), // shown as a big picture in the phone notification
+    ...(n.kind ? { kind: n.kind } : {}),
+    ...(n.photo_url ? { photo_url: n.photo_url } : {}),
     ...(n.report_id ? { report_id: n.report_id } : {}),
     created_at: n.created_at,
     by: n.by,

@@ -25,7 +25,6 @@ export default function MapClient() {
   const [msg, setMsg] = useState("");
   const [focus, setFocus] = useState<{ lat: number; lng: number; at: number } | null>(null);
 
-  // Header bell / user directory navigate here with ?focus=lat,lng
   useEffect(() => {
     const f = new URLSearchParams(window.location.search).get("focus");
     if (!f) return;
@@ -35,7 +34,6 @@ export default function MapClient() {
 
   const { reports, error, reload } = useReports(`hours=${hours}`);
 
-  // Open the map on the officer's assigned area: one province -> it, several -> a random one, ALL -> Indonesia.
   const [home, setHome] = useState<MapHome | null | undefined>(undefined);
   useEffect(() => {
     fetch("/api/me/areas", { cache: "no-store" })
@@ -78,7 +76,6 @@ export default function MapClient() {
     [full],
   );
 
-  // Legend lists the categories actually on the map right now, with how many reports each.
   const legendCats = useMemo(() => categoryShares(full.flatMap((c) => c.items.map((i) => i.category))), [full]);
 
   const selected = anchor ? full.find((c) => c.items.some((i) => i.id === anchor)) ?? null : null;

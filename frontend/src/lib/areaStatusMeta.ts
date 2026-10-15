@@ -1,8 +1,3 @@
-/**
- * "Status Wilayah": an ongoing alert level for an area (whole country or one province),
- * e.g. "SIAGA BENCANA GEMPA" for Aceh. Shown in the citizen app until an officer ends it.
- * Levels follow the BNPB/BMKG ladder Waspada < Siaga < Awas. Client-safe (no server imports).
- */
 
 export type StatusLevel = "waspada" | "siaga" | "awas";
 export type HazardKey = "gempa" | "tsunami" | "banjir" | "longsor" | "kebakaran" | "erupsi" | "cuaca" | "lainnya";
@@ -28,12 +23,10 @@ export const LEVEL_LABEL: Record<StatusLevel, string> = { waspada: "Waspada", si
 export const isStatusLevel = (v: unknown): v is StatusLevel => v === "waspada" || v === "siaga" || v === "awas";
 export const isHazard = (v: unknown): v is HazardKey => HAZARDS.some((h) => h.key === v);
 
-/** "SIAGA BENCANA GEMPA" */
 export function statusTitle(level: StatusLevel, hazardLabel: string): string {
   return `${LEVEL_LABEL[level].toUpperCase()} BENCANA ${hazardLabel.trim().toUpperCase()}`;
 }
 
-/** How long a status stays on, in hours (0 = until an officer ends it). */
 export const DURATIONS: { hours: number; label: string }[] = [
   { hours: 0, label: "Sampai diakhiri petugas" },
   { hours: 6, label: "6 jam" },
@@ -48,7 +41,7 @@ export const scopeLabel = (scope: string) => (scope === SCOPE_ALL ? "Seluruh wil
 
 export type AreaStatus = {
   id: string;
-  scope: string; // "ALL" or one of the 38 province names
+  scope: string;
   level: StatusLevel;
   hazard: HazardKey;
   hazard_label: string;
@@ -60,7 +53,7 @@ export type AreaStatus = {
   by_id: string | null;
   by_username: string | null;
   by_role: string | null;
-  notified: number | null; // citizens notified when it was set (null = no notification sent)
+  notified: number | null;
   ended_at?: string | null;
   ended_by?: string | null;
   ended_reason?: "manual" | "replaced" | null;

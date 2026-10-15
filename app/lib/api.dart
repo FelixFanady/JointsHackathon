@@ -9,8 +9,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'auto_refresh.dart';
 import 'theme.dart' show reportCode;
 
-/// Backend base URL. Override with: flutter run --dart-define=API_BASE=https://your-domain
-/// Defaults target a Next.js dev server on the host machine (Android emulator uses 10.0.2.2).
 String get apiBase {
   const fromEnv = String.fromEnvironment('API_BASE');
   if (fromEnv.isNotEmpty) return fromEnv;
@@ -21,24 +19,20 @@ class ApiException implements Exception {
   ApiException(this.message, {this.inactive = false, this.code, this.status});
   final String message;
 
-  /// The server says this citizen's account was deactivated by an admin (HTTP 403, code "inactive").
   final bool inactive;
 
-  /// Machine-readable reason from the server, e.g. "not_registered", "face_locked", "no_face".
   final String? code;
   final int? status;
   @override
   String toString() => message;
 }
 
-/// identify(): who owns this NIK, and whether a reference face (profile photo) already exists.
 class Identity {
   const Identity(this.name, this.faceRegistered);
   final String name;
   final bool faceRegistered;
 }
 
-/// Face check result. The server only ever returns a yes/no and a 0..1 score -- never a photo.
 class FaceResult {
   FaceResult.fromJson(Map<String, dynamic> j)
       : match = j['match'] == true,
@@ -47,7 +41,6 @@ class FaceResult {
   final bool match;
   final double confidence;
 
-  /// Face session token, only present when [match] is true.
   final String? token;
 }
 
@@ -64,7 +57,6 @@ class NearbyItem {
         verifiedBy = j['verified_by'] as String?,
         distanceKm = (j['distance_km'] as num).toDouble();
   final String id, kind, category, status, createdAt;
-  /// 'petugas' | 'otomatis' (AI + BMKG) when status is valid.
   final String? address, verifiedBy;
   final double lat, lng, distanceKm;
 }
@@ -80,11 +72,9 @@ class MyReport {
         verifiedBy = j['verified_by'] as String?,
         createdAt = j['created_at'] as String;
   final String id, kind, category, status, createdAt;
-  /// 'petugas' | 'otomatis' (AI + BMKG) when status is valid.
   final String? description, address, verifiedBy;
 }
 
-/// "Status Wilayah" set by Support/Admin, e.g. SIAGA BENCANA GEMPA for Aceh. level: waspada | siaga | awas.
 class AreaStatus {
   AreaStatus.fromJson(Map<String, dynamic> j)
       : id = j['id'] as String,
@@ -99,7 +89,6 @@ class AreaStatus {
   final String? endsAt;
 }
 
-/// A notification sent by Support. level: info | warning | danger.
 class AppNotice {
   AppNotice.fromJson(Map<String, dynamic> j)
       : id = j['id'] as String,
@@ -110,26 +99,20 @@ class AppNotice {
         photoUrl = j['photo_url'] as String?,
         createdAt = j['created_at'] as String;
   final String id, title, message, level, createdAt;
-  /// bencana | kriminal | umum, chosen by Support. Null on notices sent before the web had it.
   final String? kind;
-  /// Reporter's photo attached to an instant crime alert (shown as a big picture).
   final String? photoUrl;
 }
 
 class Api {
-  /// Notifications Support sent to this citizen (plus broadcasts). Pass [since] (ISO) to get only newer ones.
-  /// Each call also tells the server this app is receiving notifications.
   static Future<List<AppNotice>> notices(String nik, {String? since, double? lat, double? lng}) async {
     final j = await _post('/api/mobile/notices', {
       'nik': nik,
       if (since != null) 'since': since,
-      // Last known position, so Support can alert citizens near a verified incident.
       if (lat != null && lng != null) ...{'lat': lat, 'lng': lng},
     });
     return (j['notices'] as List).map((e) => AppNotice.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// Tell the server which phone (FCM token) belongs to this citizen, so notices reach it while the app is closed.
   static Future<void> registerPushToken(String nik, String token, {bool unregister = false}) async {
     await _post('/api/mobile/push-token', {'nik': nik, 'token': token, if (unregister) 'action': 'unregister'});
   }
@@ -140,16 +123,13 @@ class Api {
           .post(Uri.parse('$apiBase$path'),
               headers: {
                 'Content-Type': 'application/json',
-                // Proves this device passed the face check (required by the server when FACE_AUTH_ENFORCE=1).
                 if (session.faceToken != null) 'x-face-token': session.faceToken!,
               },
               body: jsonEncode(body))
           .timeout(timeout);
       return _decode(r);
     } on ApiException catch (e) {
-      // Deactivated while signed in: leave the app right away, and tell the login screen why.
       if (e.inactive && session.signedIn) session.forceSignOut(e.message);
-      // Face session missing/expired: sign in again (NIK + face).
       if (e.code == 'face_required' && session.signedIn) session.forceSignOut(e.message);
       rethrow;
     } catch (_) {
@@ -168,22 +148,17 @@ class Api {
         inactive: r.statusCode == 403 && code == 'inactive', code: code, status: r.statusCode);
   }
 
-  /// The citizen's name for a NIK, and whether a reference face is already on file.
   static Future<Identity> identify(String nik) async {
     final j = await _post('/api/mobile/identify', {'nik': nik});
     return Identity(j['name'] as String, j['face_registered'] == true);
   }
 
-  /// Live selfie (JPEG bytes, base64) vs the reference photo on the server.
   static Future<FaceResult> faceVerify(String nik, String photoB64) async =>
       FaceResult.fromJson(await _post('/api/mobile/face/verify', {'nik': nik, 'photo': photoB64}, timeout: const Duration(seconds: 40)));
 
-  /// First-time enrolment: only accepted when the NIK has no reference photo yet.
   static Future<FaceResult> faceEnroll(String nik, String photoB64) async =>
       FaceResult.fromJson(await _post('/api/mobile/face/enroll', {'nik': nik, 'photo': photoB64}, timeout: const Duration(seconds: 40)));
 
-  // After a successful send every list/map refreshes at once (see auto_refresh.dart).
-  // Both return the new report's ID ("SOS-…" / "LW-…") for the confirmation screen.
   static Future<String?> sendSos({required String nik, required double lat, required double lng, required String category, String? description, String? photoB64, String? address}) async {
     final j = await _post('/api/mobile/sos', {'nik': nik, 'lat': lat, 'lng': lng, 'category': category, 'description': description, 'photo': photoB64, 'address': address});
     notifyReportsChanged();
@@ -215,7 +190,6 @@ class Api {
     return _codeOf(j, 'report');
   }
 
-  /// Status Wilayah active for the whole country plus the province at (lat, lng). Without a location: country-wide only.
   static Future<List<AreaStatus>> areaStatus(String nik, {double? lat, double? lng}) async {
     final j = await _post('/api/mobile/status', {'nik': nik, if (lat != null && lng != null) 'lat': lat, if (lat != null && lng != null) 'lng': lng});
     return ((j['statuses'] as List?) ?? []).map((e) => AreaStatus.fromJson(e as Map<String, dynamic>)).toList();
@@ -227,7 +201,6 @@ class Api {
   }
 
   static Future<List<NearbyItem>> nearby(double lat, double lng, {double radiusKm = 5}) async {
-    // Read-only, so it is safe to retry: the dev server can be slow on its first request.
     for (var attempt = 1;; attempt++) {
       try {
         final r = await http
@@ -245,14 +218,12 @@ class Api {
   }
 }
 
-/// Logged-in citizen, persisted on the device.
 class Session extends ChangeNotifier {
   String? nik;
   String? name;
   String? faceToken;
   bool loaded = false;
 
-  /// Why the app signed the user out on its own (e.g. account deactivated); shown once on the login screen.
   String? kickedReason;
 
   bool get signedIn => nik != null && name != null;
@@ -271,7 +242,6 @@ class Session extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// [faceToken] comes from a successful face verify/enrol (see screens/face_verify.dart).
   Future<void> signIn(String nik, String name, {String? faceToken}) async {
     final p = await SharedPreferences.getInstance();
     await p.setString('nik', nik);
@@ -304,7 +274,6 @@ class Place {
   final double lat, lng;
 }
 
-/// Current GPS position, or null (with a user-readable reason) when unavailable.
 Future<(Place?, String?)> currentPlace() async {
   try {
     if (!await Geolocator.isLocationServiceEnabled()) return (null, 'GPS tidak aktif. Aktifkan layanan lokasi.');
@@ -322,9 +291,6 @@ Future<(Place?, String?)> currentPlace() async {
 
 final _addressCache = <String, String>{};
 
-/// Street address for a GPS point ("Jl. Merdeka 5, Kebon Melati, Tanah Abang, Jakarta Pusat") from
-/// OpenStreetMap, or null when offline / not found. The coordinates themselves are still what gets sent
-/// as the location; this is only for showing a readable place. One request per spot (cached).
 Future<String?> addressFor(Place p) async {
   final key = '${p.lat.toStringAsFixed(4)},${p.lng.toStringAsFixed(4)}';
   final hit = _addressCache[key];

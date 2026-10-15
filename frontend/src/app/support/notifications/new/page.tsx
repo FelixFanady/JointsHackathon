@@ -13,7 +13,6 @@ export default function NewNotificationPage() {
           <p>Kirim pemberitahuan langsung ke HP warga. Pilih kategori, jenis kejadian (menentukan bunyi), dan penerimanya.</p>
         </div>
       </div>
-      {/* useSearchParams (pre-fill from the Users page) needs a Suspense boundary. */}
       <Suspense fallback={null}>
         <ComposeClient />
       </Suspense>

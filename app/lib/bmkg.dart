@@ -3,7 +3,6 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
-/// One earthquake from BMKG's public feed (data.bmkg.go.id, no key needed).
 class Quake {
   Quake({
     required this.time,
@@ -30,8 +29,6 @@ class Bmkg {
   static List<_Raw>? _cache;
   static DateTime? _cachedAt;
 
-  /// Nearest BMKG quake within [maxKm] that happened within [window] of [reportTime].
-  /// Returns null when BMKG lists nothing that matches. Throws only when BMKG cannot be reached.
   static Future<Quake?> nearestFor({
     required double lat,
     required double lng,
@@ -56,7 +53,6 @@ class Bmkg {
     if (_cache != null && _cachedAt != null && DateTime.now().difference(_cachedAt!) < const Duration(minutes: 2)) return _cache!;
     final out = <_Raw>[];
     var reached = false;
-    // autogempa = latest, gempaterkini = 15 latest M5+, gempadirasakan = 15 latest felt.
     for (final f in const ['autogempa.json', 'gempaterkini.json', 'gempadirasakan.json']) {
       try {
         final r = await http.get(Uri.parse('$_base/$f')).timeout(const Duration(seconds: 10));

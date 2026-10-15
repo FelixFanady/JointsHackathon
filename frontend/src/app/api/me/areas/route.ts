@@ -5,7 +5,6 @@ import { ALL_AREAS } from "@/lib/provinces";
 
 export const dynamic = "force-dynamic";
 
-/** The caller's own assigned provinces (admins: ["ALL"]). Used to open the map on their area. */
 export async function GET() {
   const g = await guard(["admin", "support"]);
   if (g.error) return g.error;

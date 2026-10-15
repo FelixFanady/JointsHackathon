@@ -9,8 +9,6 @@ export default async function SupportLayout({ children }: { children: React.Reac
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  // An admin keeps the FULL admin sidebar here — it must not change when they
-  // open the support console. Only the centered tabs switch Laporan <-> Peta.
   const { title, items } = sidebarForSupport(user.role);
 
   return (

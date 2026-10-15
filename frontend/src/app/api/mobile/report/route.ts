@@ -45,14 +45,10 @@ export async function POST(req: Request) {
   if (error) return bad("Gagal mengirim laporan. Coba lagi.", 500);
   void recordLogin(c.nik);
   void recordLocation(c.nik, pos.lat, pos.lng);
-  // Penjambretan: warn citizens within 2 km right away (not verified yet, says so), with the photo.
   if (isInstantAlert(category)) {
     after(() => instantCrimeAlert({ id: data.id, category, lat: pos.lat, lng: pos.lng, address: cleanText(b?.address, 200) || null, photo_url: photo, nik: c.nik }));
   }
-  // AI + BMKG check in the background (after the response is sent): auto-alert only if both confirm.
-  // Goes through the AI queue, so a busy AI retries later instead of skipping the check.
   after(async () => { await enqueue(data.id, "triage"); await kickQueue(); });
-  // Street address + kecamatan/kota for the console (groups reports by area). Background, best-effort.
   after(() => resolveReportRegion({ id: data.id, lat: pos.lat, lng: pos.lng, address: cleanText(b?.address, 200) || null }));
   return NextResponse.json({ id: data.id, code: reportCode({ id: data.id, kind: "report" }) });
 }

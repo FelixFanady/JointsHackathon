@@ -5,16 +5,9 @@ import 'package:geolocator/geolocator.dart';
 
 import 'api.dart';
 
-/// Signals "reports changed" inside the app: fired right after this phone sends an SOS or a report,
-/// so every list/map refreshes immediately instead of waiting for the next periodic refresh.
 final reportsChanged = ValueNotifier<int>(0);
 void notifyReportsChanged() => reportsChanged.value++;
 
-/// Keeps a screen's data fresh without the user pulling to refresh:
-/// - every [autoRefreshEvery] while the screen is the visible tab and the app is in the foreground,
-/// - right away when the screen becomes visible again or the app comes back to the foreground,
-/// - right away when this phone sends a new SOS / report ([reportsChanged]).
-/// Implement [autoRefresh] as a SILENT reload (no spinners, keep scroll/map position).
 mixin AutoRefresh<T extends StatefulWidget> on State<T>, WidgetsBindingObserver {
   Duration get autoRefreshEvery => const Duration(seconds: 20);
   Future<void> autoRefresh();
@@ -36,7 +29,6 @@ mixin AutoRefresh<T extends StatefulWidget> on State<T>, WidgetsBindingObserver 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // The shell keeps every tab alive and disables tickers on hidden ones: use that as "visible".
     final visible = TickerMode.valuesOf(context).enabled;
     if (visible && !_visible) _maybeStale();
     _visible = visible;
@@ -61,7 +53,6 @@ mixin AutoRefresh<T extends StatefulWidget> on State<T>, WidgetsBindingObserver 
     if (_visible && _foreground) _run();
   }
 
-  // Coming back to a tab / the app: refresh if the data is older than a few seconds.
   void _maybeStale() {
     if (DateTime.now().difference(_last) > const Duration(seconds: 5)) _run();
   }
@@ -74,7 +65,6 @@ mixin AutoRefresh<T extends StatefulWidget> on State<T>, WidgetsBindingObserver 
     try {
       await autoRefresh();
     } catch (_) {
-      // silent: the next tick tries again
     } finally {
       _last = DateTime.now();
       _running = false;
@@ -85,8 +75,6 @@ mixin AutoRefresh<T extends StatefulWidget> on State<T>, WidgetsBindingObserver 
 Place? _lastPlace;
 DateTime? _lastPlaceAt;
 
-/// Position for background refreshes: reuses a fix younger than 2 minutes instead of waking the GPS
-/// every 20 s. Never asks for permission (the visible screens do that).
 Future<Place?> recentPlace() async {
   final at = _lastPlaceAt;
   if (_lastPlace != null && at != null && DateTime.now().difference(at) < const Duration(minutes: 2)) return _lastPlace;

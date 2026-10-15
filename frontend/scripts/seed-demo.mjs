@@ -1,5 +1,3 @@
-// Inserts demo citizens and reports around Jakarta so the map has something to show.
-// Usage: npm run seed-demo         (adds ~60 demo reports; safe to re-run, NIKs are fixed)
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 

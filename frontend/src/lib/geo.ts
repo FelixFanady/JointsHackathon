@@ -1,31 +1,22 @@
 import "server-only";
 
-/**
- * Street-map region lookup via OpenStreetMap Nominatim (reverse: GPS -> region,
- * forward: address text -> region). Free public service, so we follow its usage
- * policy: identifying User-Agent, max 1 request/second (global throttle below),
- * results are stored by the callers and never re-requested.
- *
- * Privacy note: coordinates / address text of a citizen are sent to nominatim.openstreetmap.org.
- */
 
 export type Region = {
-  province: string | null; // Provinsi
-  city: string | null; // Kota / Kabupaten
-  district: string | null; // Kecamatan
-  village: string | null; // Kelurahan / Desa
-  label: string; // "Kecamatan, Kota/Kab"
+  province: string | null;
+  city: string | null;
+  district: string | null;
+  village: string | null;
+  label: string;
   lat: number;
   lng: number;
   source: "gps" | "address";
-  at: string; // ISO time resolved
-  query?: string; // address text that produced it (source = "address")
+  at: string;
+  query?: string;
 };
 
 const BASE = "https://nominatim.openstreetmap.org";
 const UA = "SiagaKu/1.0 (emergency-reporting hackathon project)";
 
-// ---- global 1 req/s throttle (serialised) ----
 let chain: Promise<unknown> = Promise.resolve();
 let lastCall = 0;
 function throttled<T>(fn: () => Promise<T>): Promise<T> {
@@ -41,9 +32,7 @@ function throttled<T>(fn: () => Promise<T>): Promise<T> {
 
 type Addr = Record<string, string | undefined>;
 
-/** Map Nominatim's address keys (they vary by place) onto Indonesian admin levels. */
 function parse(a: Addr, lat: number, lng: number, source: Region["source"], query?: string): Region | null {
-  // DKI Jakarta: Nominatim puts the province in `city` and the kota administrasi (e.g. Jakarta Selatan) in `district`.
   const dki = !a.state && /^Daerah Khusus/i.test(a.city ?? "");
   const province = dki ? (a.city as string) : (a.state ?? a.region ?? null);
   const city = dki ? (a.district ?? a.municipality ?? a.city_district ?? province) : (a.city ?? a.county ?? a.town ?? a.regency ?? null);
@@ -65,7 +54,6 @@ async function getJson(url: string): Promise<unknown | null> {
   }
 }
 
-/** GPS -> region (null if the service is unreachable or the point has no admin data). */
 export function reverseGeocode(lat: number, lng: number): Promise<Region | null> {
   return throttled(async () => {
     const j = (await getJson(`${BASE}/reverse?format=jsonv2&addressdetails=1&zoom=14&accept-language=id&lat=${lat}&lon=${lng}`)) as
@@ -76,13 +64,11 @@ export function reverseGeocode(lat: number, lng: number): Promise<Region | null>
   });
 }
 
-/** True when the text is specific enough to geocode (very short single words like "bsd" resolve to random places). */
 export function addressUsable(text: string): boolean {
   const t = text.trim();
   return t.length >= 8 || t.split(/\s+/).length >= 2 && t.length >= 5;
 }
 
-/** Address text -> region, restricted to Indonesia. */
 export function forwardGeocode(text: string): Promise<Region | null> {
   const q = text.trim();
   if (!addressUsable(q)) return Promise.resolve(null);
@@ -96,7 +82,6 @@ export function forwardGeocode(text: string): Promise<Region | null> {
   });
 }
 
-/** Map pin -> street address text + region (building-level detail, one request). */
 export function reverseDetailed(lat: number, lng: number): Promise<{ address: string; region: Region | null } | null> {
   return throttled(async () => {
     const j = (await getJson(`${BASE}/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=id&lat=${lat}&lon=${lng}`)) as
@@ -108,7 +93,6 @@ export function reverseDetailed(lat: number, lng: number): Promise<{ address: st
   });
 }
 
-/** Place name / address text -> coordinates for centring the picker map (Indonesia only). */
 export function searchPlace(text: string): Promise<{ lat: number; lng: number; label: string } | null> {
   const q = text.trim().slice(0, 120);
   if (q.length < 3) return Promise.resolve(null);

@@ -12,11 +12,6 @@ function expiresAt(jwt: string): number {
   }
 }
 
-/**
- * Keeps the session alive: if the access token is (nearly) expired and a refresh token exists,
- * rotate both cookies. Authorization itself is enforced server-side (layouts + route handlers),
- * this only handles redirects and token refresh.
- */
 export async function middleware(req: NextRequest) {
   const access = req.cookies.get(ACCESS)?.value;
   const refresh = req.cookies.get(REFRESH)?.value;

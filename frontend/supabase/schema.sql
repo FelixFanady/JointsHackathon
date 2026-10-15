@@ -1,6 +1,3 @@
--- SiagaKu schema. Run once in Supabase Dashboard -> SQL Editor.
--- All tables have RLS enabled with NO policies: the anon key (and any browser) can read/write nothing.
--- The Next.js server and the mobile backend API access data with the service_role key only.
 
 create extension if not exists pgcrypto;
 
@@ -52,9 +49,9 @@ create table if not exists public.settings (
 );
 
 insert into public.settings (key, value) values
-  ('emergency_threshold',      '15'::jsonb),   -- number of people pressing SOS nearby that auto-escalates
-  ('emergency_window_minutes', '60'::jsonb),   -- time window for counting those presses
-  ('cluster_radius_m',         '500'::jsonb)   -- distance that groups reports into one map point
+  ('emergency_threshold',      '15'::jsonb),
+  ('emergency_window_minutes', '60'::jsonb),
+  ('cluster_radius_m',         '500'::jsonb)
 on conflict (key) do nothing;
 
 alter table public.profiles enable row level security;

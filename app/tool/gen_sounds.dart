@@ -1,12 +1,9 @@
-// Generates the SOS button sounds as 16-bit mono WAV (44.1 kHz).
-// Run from app/: dart run tool/gen_sounds.dart
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
 const rate = 44100;
 
-/// Envelope: quick attack, smooth release, so beeps don't click.
 double env(double t, double dur, {double a = .006, double r = .05}) {
   if (t < a) return t / a;
   if (t > dur - r) return max(0, (dur - t) / r);
@@ -22,7 +19,6 @@ List<double> tone(double freq, double dur, {double vol = .6, double harm = .25, 
   });
 }
 
-/// Soft "tuk" when the finger touches the button: pitch drops fast.
 List<double> press() {
   const dur = .09;
   final n = (rate * dur).round();
@@ -35,7 +31,6 @@ List<double> press() {
   });
 }
 
-/// Two-tone rising siren for the moment SOS is activated.
 List<double> alarm() {
   final out = <double>[];
   for (var k = 0; k < 3; k++) {
@@ -46,21 +41,18 @@ List<double> alarm() {
   return out;
 }
 
-// --- Notification sirens (Android res/raw). Lower sample rate keeps the 30 s file small. ---
 const nrate = 22050;
 
-/// Rich siren voice: fundamental + odd harmonics (horn-like), from a running phase.
 double _voice(double phase) => sin(phase) + .35 * sin(3 * phase) + .15 * sin(5 * phase);
 
-/// Civil-defence disaster siren: slow wail rising and falling, ~30 s, played once.
 List<double> disasterSiren({double dur = 30}) {
   final n = (nrate * dur).round();
   var phase = 0.0;
-  const cycle = 7.0; // seconds per rise+fall
+  const cycle = 7.0;
   return List.generate(n, (i) {
     final t = i / nrate;
-    final c = (t % cycle) / cycle; // 0..1
-    final shape = c < .55 ? sin(c / .55 * pi / 2) : cos((c - .55) / .45 * pi / 2); // rise slow, fall
+    final c = (t % cycle) / cycle;
+    final shape = c < .55 ? sin(c / .55 * pi / 2) : cos((c - .55) / .45 * pi / 2);
     final f = 320 + 520 * shape;
     phase += 2 * pi * f / nrate;
     final fade = min(1.0, min(t / .6, (dur - t) / 1.2)).clamp(0.0, 1.0);
@@ -68,7 +60,6 @@ List<double> disasterSiren({double dur = 30}) {
   });
 }
 
-/// Police siren: fast "wiu-wiu" yelp, ~3.5 s, played once.
 List<double> policeSiren({double dur = 3.6}) {
   final n = (nrate * dur).round();
   var phase = 0.0;
@@ -76,7 +67,7 @@ List<double> policeSiren({double dur = 3.6}) {
   return List.generate(n, (i) {
     final t = i / nrate;
     final c = (t % cycle) / cycle;
-    final shape = c < .5 ? c * 2 : (1 - c) * 2; // triangle sweep up/down
+    final shape = c < .5 ? c * 2 : (1 - c) * 2;
     final f = 700 + 750 * shape;
     phase += 2 * pi * f / nrate;
     final fade = min(1.0, min(t / .05, (dur - t) / .3)).clamp(0.0, 1.0);
@@ -101,12 +92,10 @@ void write(String path, List<double> s, {int rate = rate}) {
 
 void main() {
   write('assets/sounds/press.wav', press());
-  // Countdown beeps get higher each second: 3 -> 2 -> 1.
   write('assets/sounds/beep1.wav', tone(660, .14));
   write('assets/sounds/beep2.wav', tone(880, .14));
   write('assets/sounds/beep3.wav', tone(1100, .14));
   write('assets/sounds/alarm.wav', alarm());
-  // Notification sounds must live in Android res/raw (referenced by name from notifier.dart).
   write('android/app/src/main/res/raw/siren_disaster.wav', disasterSiren(), rate: nrate);
   write('android/app/src/main/res/raw/siren_police.wav', policeSiren(), rate: nrate);
 }

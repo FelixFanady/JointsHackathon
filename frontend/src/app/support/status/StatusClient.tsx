@@ -13,7 +13,6 @@ import { formatDateTime, timeAgo } from "@/lib/util";
 const ROLE_LABEL: Record<string, string> = { admin: "Admin", support: "Support" };
 const hazardIcon = (k: HazardKey) => HAZARDS.find((h) => h.key === k)?.icon ?? "crisis_alert";
 
-/** Status Wilayah: set an ongoing alert level for the whole country or one province, see what is active, end it. */
 export default function StatusClient() {
   const [list, setList] = useState<AreaStatus[] | null>(null);
   const [canAll, setCanAll] = useState(false);
@@ -42,7 +41,6 @@ export default function StatusClient() {
     const t = setInterval(load, 30000);
     return () => clearInterval(t);
   }, []);
-  // Default area: everything for admins / ALL officers, else the officer's first province.
   useEffect(() => { if (!scope && (canAll || areas.length)) setScope(canAll ? SCOPE_ALL : areas[0]); }, [canAll, areas, scope]);
 
   const now = Date.now();
@@ -111,7 +109,6 @@ export default function StatusClient() {
 
   return (
     <>
-      {/* What citizens see right now */}
       <section className="card st-active" aria-label="Status aktif">
         <div className="st-head">
           <h2>Status aktif</h2>

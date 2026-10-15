@@ -6,15 +6,9 @@ import { createPortal } from "react-dom";
 export type SelectOption<T extends string | number> = {
   value: T;
   label: string;
-  /** Small muted text on the right, e.g. a count. */
   hint?: string | number;
 };
 
-/**
- * Dashboard dropdown that replaces the browser's native <select> list, so every dropdown looks the same.
- * Same keyboard behaviour as a select: ↑/↓, Home/End, Enter/Space, Esc, and typing a letter jumps to it.
- * The list is rendered in a portal (position: fixed) so cards, tables and modals never clip it.
- */
 export default function Select<T extends string | number>({
   value,
   onChange,
@@ -74,7 +68,6 @@ export default function Select<T extends string | number>({
     close();
   }
 
-  // Follow the button while open; close on outside click.
   useLayoutEffect(() => {
     if (!open) return;
     list.current?.focus();
@@ -93,7 +86,6 @@ export default function Select<T extends string | number>({
     };
   }, [open, place]);
 
-  // Keep the highlighted option in view.
   useEffect(() => {
     if (open) list.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [open, active]);

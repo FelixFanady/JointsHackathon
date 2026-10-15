@@ -12,18 +12,6 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '../api.dart';
 import '../theme.dart';
 
-/// Face login.
-///
-/// 1. On-device liveness (Google ML Kit, nothing leaves the phone): face centred, then two random
-///    challenges out of blink / turn head / smile, then hold still. The same tracked face must do
-///    every step, so a printed photo or a face swapped mid-way fails.
-/// 2. One still photo is taken and sent to the server:
-///    - [enroll] = true  -> /api/mobile/face/enroll (first time, no reference photo on file yet)
-///    - [enroll] = false -> /api/mobile/face/verify (compare with the profile photo on the website)
-///    The server answers only { match, confidence } (+ a session token on match). It never sends
-///    any photo back, so this screen can never show anyone else's face.
-///
-/// Pops with the face session token on success, or null when the user backs out.
 class FaceScreen extends StatefulWidget {
   const FaceScreen({super.key, required this.nik, required this.name, required this.enroll});
   final String nik, name;
@@ -43,8 +31,8 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
   CameraDescription? _front;
   final _detector = FaceDetector(
     options: FaceDetectorOptions(
-      enableClassification: true, // eye-open + smile probabilities
-      enableTracking: true, // same person across steps
+      enableClassification: true,
+      enableTracking: true,
       performanceMode: FaceDetectorMode.fast,
       minFaceSize: 0.25,
     ),
@@ -55,7 +43,7 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
   List<_Step> _steps = const [];
   int _stepIndex = 0;
   int _okFrames = 0;
-  int _blinkStage = 0; // 0: wait for open eyes, 1: wait for closed, 2: wait for open again
+  int _blinkStage = 0;
   int? _trackingId;
   String _hint = '';
   String? _message;
@@ -83,7 +71,6 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Release the camera in the background; restart the check when the user comes back.
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
       _deadline?.cancel();
       _stopCamera();
@@ -102,7 +89,6 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
     await c.dispose();
   }
 
-  // ------------------------------------------------------------------ flow
 
   Future<void> _start() async {
     await _stopCamera();
@@ -172,12 +158,11 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
         _Step.hold => 'Tatap kamera dan tahan sebentar',
       };
 
-  // ------------------------------------------------------------------ liveness (on device)
 
   Future<void> _onFrame(CameraImage image) async {
     if (_busy || _phase != _Phase.liveness) return;
     final now = DateTime.now();
-    if (now.difference(_lastFrame).inMilliseconds < 120) return; // ~8 fps is plenty
+    if (now.difference(_lastFrame).inMilliseconds < 120) return;
     _busy = true;
     _lastFrame = now;
     try {
@@ -201,7 +186,6 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
       hint = 'Pastikan hanya satu wajah di kamera';
     } else {
       final f = faces.first;
-      // A different tracked face mid-check = start over (blocks swapping in a photo after the first steps).
       if (_trackingId != null && f.trackingId != null && f.trackingId != _trackingId) {
         _stepIndex = 0;
         _okFrames = 0;
@@ -216,7 +200,6 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
     if (_phase == _Phase.liveness) setState(() => _hint = hint ?? _hintFor(_steps[_stepIndex]));
   }
 
-  /// Returns a correction hint, or null when the current step's own instruction should show.
   String? _advance(Face f, double shortSide) {
     final yaw = f.headEulerAngleY ?? 0;
     final pitch = f.headEulerAngleX ?? 0;
@@ -282,13 +265,12 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
       };
       final device = degrees[cam.value.deviceOrientation];
       if (device == null) return null;
-      rotation = InputImageRotationValue.fromRawValue((sensor + device) % 360); // front camera
+      rotation = InputImageRotationValue.fromRawValue((sensor + device) % 360);
     }
     if (rotation == null) return null;
 
     final size = Size(image.width.toDouble(), image.height.toDouble());
     if (Platform.isAndroid) {
-      // Some devices deliver 3-plane YUV_420_888 even when NV21 was requested: convert.
       final bytes = image.planes.length == 1 ? image.planes.first.bytes : _yuv420ToNv21(image);
       return InputImage.fromBytes(
         bytes: bytes,
@@ -322,7 +304,6 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
     return out;
   }
 
-  // ------------------------------------------------------------------ server match
 
   Future<void> _captureAndSend() async {
     final cam = _cam;
@@ -337,7 +318,7 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
       if (cam.value.isStreamingImages) await cam.stopImageStream();
       final shot = await cam.takePicture();
       final bytes = await shot.readAsBytes();
-      unawaited(File(shot.path).delete().then((_) {}, onError: (_) {})); // no selfie left on the phone
+      unawaited(File(shot.path).delete().then((_) {}, onError: (_) {}));
       b64 = base64Encode(bytes);
     } catch (_) {
       _fail('Gagal mengambil foto. Coba lagi.');
@@ -360,10 +341,10 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
     } on ApiException catch (e) {
       if (!mounted) return;
       switch (e.code) {
-        case 'not_registered': // the reference was removed meanwhile -> enrol instead
+        case 'not_registered':
           setState(() => _enroll = true);
           _start();
-        case 'already_registered': // someone (admin / this user on another phone) set it -> verify
+        case 'already_registered':
           setState(() => _enroll = false);
           _start();
         case 'face_locked':
@@ -376,7 +357,6 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
     }
   }
 
-  // ------------------------------------------------------------------ UI
 
   Color get _ringColor => switch (_phase) {
         _Phase.matched => C.ok,

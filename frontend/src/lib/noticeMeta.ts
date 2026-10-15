@@ -1,4 +1,3 @@
-/** Notification categories (= level) and kinds (= sound on the phone). Client-safe. */
 
 export type NoticeLevelKey = "danger" | "warning" | "info";
 export type NoticeKindKey = "bencana" | "kriminal" | "umum";

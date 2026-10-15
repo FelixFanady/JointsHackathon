@@ -1,5 +1,3 @@
-// Creates the first admin. Usage (from /frontend):
-//   npm run create-admin -- <username> <password> "<Full Name>"
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 

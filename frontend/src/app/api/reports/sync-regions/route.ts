@@ -6,12 +6,8 @@ import { loadReportRegions, resolveReportRegion } from "@/lib/reportRegion";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const BATCH = 6; // the street map allows ~1 request/second, so keep each call short
+const BATCH = 6;
 
-/**
- * Fill in address + area for recent reports that don't have one yet (older reports, or ones whose
- * background lookup failed). The console calls this repeatedly until `remaining` is 0.
- */
 export async function POST() {
   const g = await guard(["admin", "support"]);
   if (g.error) return g.error;

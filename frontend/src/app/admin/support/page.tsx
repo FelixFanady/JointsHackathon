@@ -16,7 +16,6 @@ export default async function SupportPage() {
       .order("created_at", { ascending: false }),
     loadAllAreas(),
   ]);
-  // No assignment saved yet = whole world (same default the server applies).
   const rows = ((data ?? []) as Profile[]).map((p) => ({ ...p, areas: areas[p.id] ?? [ALL_AREAS] }));
 
   return (

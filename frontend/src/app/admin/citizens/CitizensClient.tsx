@@ -33,7 +33,6 @@ function initials(name: string): string {
   return name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
 }
 
-/** "12 Mar 1998 (26 th)" from a YYYY-MM-DD string. */
 function formatBirth(ymd: string): string {
   const d = new Date(ymd + "T00:00:00");
   if (Number.isNaN(d.getTime())) return ymd;
@@ -45,15 +44,17 @@ function formatBirth(ymd: string): string {
   return age >= 0 && age < 130 ? `${label} (${age} th)` : label;
 }
 
-export default function CitizensClient({ initial }: { initial: Citizen[] }) {
+export default function CitizensClient({ initial, locks = {} }: { initial: Citizen[]; locks?: Record<string, number> }) {
   const router = useRouter();
   const [q, setQ] = useState("");
+  const [onlyLocked, setOnlyLocked] = useState(false);
+  const [unlocking, setUnlocking] = useState<Citizen | null>(null);
+  const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<Citizen | null>(null);
   const [editing, setEditing] = useState<Citizen | null>(null);
   const [viewing, setViewing] = useState<Citizen | null>(null);
   const [form, setForm] = useState<ProfileForm | null>(null);
-  // Exact map point chosen with "Pilih di peta" (sent along so the region is stored precisely).
   const [pin, setPin] = useState<{ lat: number; lng: number } | null>(null);
   const [nik, setNik] = useState("");
   const [name, setName] = useState("");
@@ -63,19 +64,23 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
   const [toast, setToast] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const lockOf = (c: Citizen) => (unlocked.has(c.nik) ? 0 : locks[c.nik] ?? 0);
+  const lockedCount = initial.filter((c) => lockOf(c) > 0).length;
+
   const rows = useMemo(() => {
     const n = q.trim().toLowerCase();
+    const base = onlyLocked ? initial.filter((c) => !unlocked.has(c.nik) && (locks[c.nik] ?? 0) > 0) : initial;
     return n
-      ? initial.filter(
+      ? base.filter(
           (c) =>
             c.nik.startsWith(n) ||
             c.full_name.toLowerCase().includes(n) ||
             (c.email ?? "").toLowerCase().includes(n) ||
             (c.phone ?? "").includes(n),
         )
-      : initial;
-  }, [initial, q]);
-  const paged = usePaged(rows, q);
+      : base;
+  }, [initial, q, onlyLocked, locks, unlocked]);
+  const paged = usePaged(rows, [q, onlyLocked]);
 
   function flash(msg: string) {
     setToast(msg);
@@ -163,7 +168,20 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
     router.refresh();
   }
 
-  // Optimistic on/off state so the switch animates instantly; the server value takes over after refresh.
+  async function unlock() {
+    if (!unlocking) return;
+    const c = unlocking;
+    setBusy(true);
+    setError("");
+    const err = await call(`/api/admin/citizens/${c.nik}/unlock`, "POST");
+    setBusy(false);
+    if (err) return setError(err);
+    setUnlocking(null);
+    setUnlocked((s) => new Set(s).add(c.nik));
+    flash(`Verifikasi wajah ${c.full_name} dibuka kembali.`);
+    router.refresh();
+  }
+
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [rowFlash, setRowFlash] = useState<Record<string, "on" | "off">>({});
@@ -177,7 +195,7 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
     const err = await call(`/api/admin/citizens/${c.nik}`, "PATCH", { active: next });
     setPending((p) => { const n = new Set(p); n.delete(c.nik); return n; });
     if (err) {
-      setFlags((f) => ({ ...f, [c.nik]: !next })); // roll back the switch
+      setFlags((f) => ({ ...f, [c.nik]: !next }));
       flash(err);
       return;
     }
@@ -197,6 +215,18 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
           onChange={(e) => setQ(e.target.value)}
           aria-label="Cari pengguna"
         />
+        {(lockedCount > 0 || onlyLocked) && (
+          <button
+            type="button"
+            className={`btn sm${onlyLocked ? " danger" : ""}`}
+            aria-pressed={onlyLocked}
+            onClick={() => setOnlyLocked((v) => !v)}
+            title="Tampilkan hanya NIK yang verifikasi wajahnya terkunci"
+          >
+            <span className="msym sm">block</span>
+            {onlyLocked ? "Tampilkan semua" : `${lockedCount} wajah terkunci`}
+          </button>
+        )}
         <button
           className="btn primary"
           onClick={() => {
@@ -272,10 +302,28 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
                           <span className="knob" />
                         </button>
                         <span className={`badge ${on ? "valid" : "off"}`}>{on ? "Aktif" : "Nonaktif"}</span>
+                        {lockOf(c) > 0 && (
+                          <span className="badge false" title={`Terlalu banyak verifikasi wajah gagal. Terbuka otomatis dalam ${lockOf(c)} menit.`}>
+                            <span className="msym xs">block</span>Wajah terkunci · {lockOf(c)} mnt
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td>{formatDateTime(c.created_at)}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      {lockOf(c) > 0 && (
+                        <button
+                          className="icon-btn"
+                          title="Buka kunci verifikasi wajah"
+                          aria-label={`Buka kunci verifikasi wajah ${c.full_name}`}
+                          onClick={() => {
+                            setError("");
+                            setUnlocking(c);
+                          }}
+                        >
+                          <span className="msym sm">key</span>
+                        </button>
+                      )}
                       <button className="icon-btn" title="Edit profil" aria-label={`Edit profil ${c.full_name}`} onClick={() => openEdit(c)}>
                         <span className="msym sm">edit</span>
                       </button>
@@ -404,6 +452,20 @@ export default function CitizensClient({ initial }: { initial: Citizen[] }) {
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {unlocking && (
+        <Modal
+          title="Buka kunci verifikasi wajah?"
+          sub={`${unlocking.full_name} (${maskNik(unlocking.nik)}) gagal verifikasi wajah 5 kali dalam 15 menit. Buka hanya jika Anda sudah memastikan ini memang pemilik NIK, misalnya lewat telepon.`}
+          onClose={() => setUnlocking(null)}
+        >
+          {error && <div className="alert error" role="alert">{error}</div>}
+          <div className="actions">
+            <button className="btn" onClick={() => setUnlocking(null)}>Batal</button>
+            <button className="btn ok" disabled={busy} onClick={unlock}>{busy ? "Membuka…" : "Ya, buka kunci"}</button>
+          </div>
         </Modal>
       )}
 

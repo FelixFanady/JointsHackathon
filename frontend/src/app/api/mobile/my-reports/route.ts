@@ -5,7 +5,6 @@ import { requireFaceSession } from "@/lib/face";
 
 export const dynamic = "force-dynamic";
 
-/** The citizen's own reports. POST so the NIK never lands in URL/access logs. */
 export async function POST(req: Request) {
   const rl = rateLimit(req, "mine", 30);
   if (rl) return rl;
@@ -22,7 +21,6 @@ export async function POST(req: Request) {
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) return bad("Gagal memuat laporan.", 500);
-  // verified_by: "petugas" | "otomatis" (AI + BMKG) for valid reports; never the reviewer's id.
   const reports = (data ?? []).map(({ reviewed_by, ...r }) => ({ ...r, verified_by: r.status === "valid" ? (reviewed_by ? "petugas" : "otomatis") : null }));
   return NextResponse.json({ reports });
 }

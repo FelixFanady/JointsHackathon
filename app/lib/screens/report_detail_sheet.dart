@@ -7,7 +7,6 @@ import '../api.dart';
 import '../bmkg.dart';
 import '../theme.dart';
 
-/// Opens the "Detail Laporan" bottom sheet for one of the citizen's own reports.
 Future<void> showReportDetail(BuildContext context, MyReport r) => _open(
       context,
       ReportDetailSheet(
@@ -16,7 +15,6 @@ Future<void> showReportDetail(BuildContext context, MyReport r) => _open(
       ),
     );
 
-/// Opens the same sheet for a report near the citizen (anonymous: no name, no description, rounded location).
 Future<void> showNearbyDetail(BuildContext context, NearbyItem i) => _open(
       context,
       ReportDetailSheet(
@@ -35,8 +33,6 @@ Future<void> _open(BuildContext context, Widget sheet) => showModalBottomSheet(
       builder: (_) => sheet,
     );
 
-/// Layout follows stitch "detail_laporan": header card, progress timeline, description, location.
-/// Only data the app really has is shown; steps without a known time show no time.
 class ReportDetailSheet extends StatefulWidget {
   const ReportDetailSheet({
     super.key,
@@ -55,7 +51,7 @@ class ReportDetailSheet extends StatefulWidget {
   });
   final String id, kind, category, status, createdAt;
   final String? description, address, verifiedBy;
-  final bool own; // true = the citizen's own report
+  final bool own;
   final double? distanceKm, lat, lng;
   @override
   State<ReportDetailSheet> createState() => _ReportDetailSheetState();
@@ -82,7 +78,6 @@ class _ReportDetailSheetState extends State<ReportDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // The server prefixes "[Membahayakan warga] " when the citizen ticked the danger option.
     var desc = (r.description ?? '').trim();
     final danger = desc.startsWith('[Membahayakan warga]');
     if (danger) desc = desc.substring('[Membahayakan warga]'.length).trim();
@@ -104,7 +99,6 @@ class _ReportDetailSheetState extends State<ReportDetailSheet> {
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .88),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // Drag handle + title bar
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
           child: Column(children: [
@@ -143,7 +137,6 @@ class _ReportDetailSheetState extends State<ReportDetailSheet> {
     );
   }
 
-  // ---------- Sections ----------
 
   Widget _header() {
     final tint = isSos ? const Color(0xFFFEE2E2) : C.primaryTint;
@@ -205,10 +198,7 @@ class _ReportDetailSheetState extends State<ReportDetailSheet> {
   }
 
   Widget _progress() {
-    // Only steps the system actually records: the database knows "received" and the officer's verdict,
-    // not whether a team is on site, so no "Ditindaklanjuti" claim is made here.
     final steps = switch (r.status) {
-      // Verified automatically (AI + BMKG, no officer involved): say so, never claim an officer did it.
       'valid' when r.verifiedBy == 'otomatis' => const [
           _Step('Laporan Diterima', 'Masuk ke pusat komando SiagaKu', _S.done),
           _Step('Diverifikasi Otomatis', 'Dikonfirmasi AI dan data gempa BMKG, sedang ditinjau petugas', _S.done),
@@ -297,7 +287,6 @@ class _ReportDetailSheetState extends State<ReportDetailSheet> {
               options: MapOptions(initialCenter: p, initialZoom: 15.5, interactionOptions: const InteractionOptions(flags: InteractiveFlag.none)),
               children: [
                 TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'id.siagaku.app'),
-                // Location is rounded to ~100 m, so show an area, not an exact pin.
                 CircleLayer(circles: [
                   CircleMarker(point: p, radius: 100, useRadiusInMeter: true, color: color.withValues(alpha: .18), borderColor: color, borderStrokeWidth: 2),
                 ]),
@@ -371,15 +360,12 @@ class _ReportDetailSheetState extends State<ReportDetailSheet> {
       );
 }
 
-// ---------- Building blocks ----------
 
-/// "Info Gempa BMKG": the nearest quake BMKG recorded around the report's time and place.
-/// Labelled as BMKG's nearest record, never as "the quake you reported".
 class _QuakeCard extends StatefulWidget {
   const _QuakeCard({this.lat, this.lng, required this.reportTime, this.tsunami = false});
-  final double? lat, lng; // null for the citizen's own reports -> use current GPS position
+  final double? lat, lng;
   final DateTime reportTime;
-  final bool tsunami; // tsunami report: lead with BMKG's tsunami potential, not the magnitude
+  final bool tsunami;
   @override
   State<_QuakeCard> createState() => _QuakeCardState();
 }
@@ -449,7 +435,6 @@ class _QuakeCardState extends State<_QuakeCard> {
                 const SizedBox(height: 10),
                 Text(
                   ts
-                      // Never imply "no tsunami": absence of a BMKG record is not proof of safety.
                       ? 'BMKG tidak mencatat gempa pemicu tsunami di sekitar lokasi ini pada waktu laporan. Tetap jauhi pantai dan ikuti arahan petugas atau BPBD.'
                       : 'BMKG belum mencatat gempa di sekitar lokasi ini pada waktu laporan. Gempa kecil mungkin belum masuk daftar BMKG.',
                   style: const TextStyle(color: C.muted, height: 1.4),
@@ -459,7 +444,6 @@ class _QuakeCardState extends State<_QuakeCard> {
 
             final strong = q.magnitude >= 5;
             final magColor = q.magnitude >= 6 ? C.emergencyDark : (strong ? const Color(0xFFC2410C) : C.warnText);
-            // BMKG reports in WIB; show WIB regardless of the phone's time zone.
             final w = q.time.toUtc().add(const Duration(hours: 7));
             final wib = '${w.day} ${_months[w.month - 1]} ${w.year}, ${w.hour.toString().padLeft(2, '0')}.${w.minute.toString().padLeft(2, '0')} WIB';
             final potentialBanner = q.potential.isEmpty
@@ -487,10 +471,8 @@ class _QuakeCardState extends State<_QuakeCard> {
                 style: const TextStyle(fontSize: 12, color: C.muted, height: 1.35),
               ),
               const SizedBox(height: 14),
-              // For a tsunami report the tsunami status is the headline.
               if (ts) ...[potentialBanner, const SizedBox(height: 14)],
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                // Magnitude badge
                 Container(
                   width: 84, padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(color: magColor.withValues(alpha: .1), borderRadius: BorderRadius.circular(16), border: Border.all(color: magColor.withValues(alpha: .3))),
@@ -511,7 +493,6 @@ class _QuakeCardState extends State<_QuakeCard> {
                 ),
               ]),
               const SizedBox(height: 12),
-              // Tsunami potential: BMKG's own wording.
               if (!ts) potentialBanner,
               if (q.felt.isNotEmpty && q.felt != '-') ...[
                 const SizedBox(height: 8),
@@ -532,7 +513,6 @@ class _QuakeCardState extends State<_QuakeCard> {
       );
 }
 
-/// "Yang perlu Anda lakukan": safety advice per incident type, plus national emergency numbers.
 class _SafetyCard extends StatelessWidget {
   const _SafetyCard({required this.category});
   final String category;
@@ -701,7 +681,6 @@ class _TimelineRow extends StatelessWidget {
   }
 }
 
-/// The current step's dot gently pulses so the citizen sees work is in progress.
 class _PulseDot extends StatefulWidget {
   const _PulseDot();
   @override
@@ -743,7 +722,6 @@ class _PulseDotState extends State<_PulseDot> with SingleTickerProviderStateMixi
       );
 }
 
-/// Staggered fade + slide-up for each section when the sheet opens.
 class _Reveal extends StatelessWidget {
   const _Reveal({required this.index, required this.child});
   final int index;
@@ -763,7 +741,6 @@ class _Reveal extends StatelessWidget {
   }
 }
 
-// ---------- Date helpers (no extra package needed) ----------
 
 const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 

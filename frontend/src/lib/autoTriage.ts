@@ -7,21 +7,6 @@ import { NEARBY_RADIUS_OPTIONS_KM, QUAKE_CATEGORIES, defaultNoticeText, matchQua
 import { loadRegionsFor } from "./reportRegion";
 import { appendNoticeLog, citizensAround, loadNoticeLog, sendReportNotice } from "./reportNoticeServer";
 
-/**
- * Automatic triage, run in the background right after a citizen sends an SOS or a report:
- *
- *   1. AI verifies the report (with nearby same-category reports, BMKG quakes and news as reference).
- *   2. It is acted on AUTOMATICALLY only when BOTH agree:
- *        - AI verdict "valid" with confidence >= MIN_CONFIDENCE, AND
- *        - BMKG recorded a matching quake (near the report, around its time).
- *      BMKG only publishes earthquakes (with tsunami potential), so only "Gempa Bumi" and "Tsunami"
- *      reports can ever be confirmed this way.
- *   3. Then: mark valid, let the AI pick who to alert (radius or everyone), send ONE alert per BMKG quake.
- *
- * Anything else (AI unsure/invalid, no BMKG match, other categories, AI unavailable) stays "pending"
- * for an officer — the AI verdict is saved on the report so the officer sees it.
- * Never throws: a failure here must not affect the citizen's request.
- */
 
 const MIN_CONFIDENCE = 70;
 const CLUSTER_KM = 10;
@@ -29,8 +14,6 @@ export const AI_SENDER = "AI SiagaKu (otomatis)";
 
 type Rpt = { id: string; category: string; description: string | null; address: string | null; lat: number; lng: number; status: string; created_at: string };
 
-// The AI only decides WHO receives the alert. The text is built by defaultNoticeText from BMKG facts,
-// so it is always complete (magnitude, depth, epicentre, time, tsunami status) and laid out the same way.
 type Plan = { scope: "nearby" | "all"; radius_km: number; reason: string };
 
 const PLAN_SYSTEM = `Kamu perencana peringatan dini untuk pusat operasi darurat di Indonesia.
@@ -54,7 +37,6 @@ function parsePlan(text: string): Plan | null {
   return { scope, radius_km: radius, reason: String(j.reason ?? "").trim().slice(0, 200) };
 }
 
-/** Rule-based plan, used when the AI planner is unavailable. */
 function fallbackPlan(q: Quake): Plan {
   const m = q.magnitudo;
   return {
@@ -64,22 +46,18 @@ function fallbackPlan(q: Quake): Plan {
   };
 }
 
-/** done = finished (acted or left for an officer); retry = AI busy/unreachable, try again later; skip = nothing to do. */
 export type TriageOutcome = "done" | "retry" | "skip";
 
 export async function autoTriage(reportId: string): Promise<TriageOutcome> {
-  // Officers see "AI sedang memeriksa" (button disabled) for every report this job covers,
-  // until the whole job ends, including the alert being sent.
   let tracked: string[] = [];
   try {
-    if (!process.env.OPENROUTER_API_KEY) return "skip"; // no AI configured -> officer handles it
+    if (!process.env.OPENROUTER_API_KEY) return "skip";
     const { data } = await db().from("reports").select("id,category,description,address,lat,lng,status,created_at").eq("id", reportId).maybeSingle();
     const r = data as Rpt | null;
     if (!r || r.status !== "pending") return "skip";
     tracked = [r.id];
     await markAiRunning(tracked);
 
-    // Same-category reports nearby in the recent window give the AI more evidence.
     const settings = await loadSettings();
     const windowMs = settings.emergency_window_minutes * 60_000;
     const t = Date.parse(r.created_at);
@@ -99,31 +77,24 @@ export async function autoTriage(reportId: string): Promise<TriageOutcome> {
     tracked = ids;
     await markAiRunning(ids);
 
-    const res = await verifyReports(ids, { track: false }); // saves the AI verdict on every report for the officer
-    // AI busy (all free models full) or unreachable: let the queue retry later.
+    const res = await verifyReports(ids, { track: false });
     if (!res.ok) return res.status >= 500 || res.status === 429 ? "retry" : "skip";
     const { verdict, quakes } = res.value;
 
-    // Rule: act automatically only when AI AND BMKG both confirm.
     if (!QUAKE_CATEGORIES.includes(r.category)) return "done";
     if (verdict.verdict !== "valid" || verdict.confidence < MIN_CONFIDENCE) return "done";
     const quake = matchQuake(quakes, r.created_at);
     if (!quake) return "done";
 
-    // Verified: mark this report and its still-pending same-incident mates valid. reviewed_by stays null
-    // = verified automatically (the app and the console say so instead of "by an officer").
     await db()
       .from("reports")
       .update({ status: "valid", reviewed_by: null, reviewed_at: new Date().toISOString() })
       .in("id", ids)
       .eq("status", "pending");
 
-    // One alert per BMKG quake: many SOS about the same quake must not ring everyone many times.
-    // Insert (not upsert) is the lock: a second concurrent triage fails on the existing key.
     const claimKey = `auto_alert:${quake.waktu}|${quake.wilayah}`.slice(0, 200);
     const claim = await db().from("settings").insert({ key: claimKey, value: { report_id: r.id, at: new Date().toISOString() }, updated_at: new Date().toISOString() });
     if (claim.error) {
-      // Already alerted for this quake: show that alert on this report too, without sending again.
       const { data: c } = await db().from("settings").select("value").eq("key", claimKey).maybeSingle();
       const first = (c?.value as { report_id?: string } | null)?.report_id;
       if (first && first !== r.id) {
@@ -153,19 +124,17 @@ export async function autoTriage(reportId: string): Promise<TriageOutcome> {
     };
     const ai = await askAiJson(PLAN_SYSTEM, `Data (JSON):\n${JSON.stringify(planInput)}`, parsePlan);
     const plan = ai.ok ? ai.value : fallbackPlan(quake);
-    if (tsunamiPotential(quake)) plan.scope = "all"; // hard safety rule, regardless of the AI
+    if (tsunamiPotential(quake)) plan.scope = "all";
 
-    // Never send to an empty radius: widen to the smallest radius that has someone.
     if (plan.scope === "nearby" && (counts[String(plan.radius_km)] ?? 0) === 0) {
       const wider = NEARBY_RADIUS_OPTIONS_KM.find((km) => km >= plan.radius_km && (counts[String(km)] ?? 0) > 0);
       if (!wider) {
-        await db().from("settings").delete().eq("key", claimKey); // nothing sent: let an officer decide
+        await db().from("settings").delete().eq("key", claimKey);
         return "done";
       }
       plan.radius_km = wider;
     }
 
-    // Readable text with the full BMKG facts (same layout officers get prefilled).
     const region = (await loadRegionsFor([r.id])).get(r.id)?.region ?? null;
     const text = defaultNoticeText({ ...r, region }, "bencana", quake, { auto: true });
 
@@ -180,10 +149,9 @@ export async function autoTriage(reportId: string): Promise<TriageOutcome> {
       auto: true,
       note: `AI ${verdict.confidence}% + BMKG M${quake.magnitudo} (${quake.jarak_km} km). ${plan.reason}`.slice(0, 300),
     });
-    if (!sent.ok) await db().from("settings").delete().eq("key", claimKey); // release so it can be retried
+    if (!sent.ok) await db().from("settings").delete().eq("key", claimKey);
     return "done";
   } catch {
-    /* background job: never surface errors to the citizen request */
     return "retry";
   } finally {
     await clearAiRunning(tracked);

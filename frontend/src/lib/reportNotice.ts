@@ -1,15 +1,9 @@
 import type { NoticeKind } from "./citizenNotice";
 
-/**
- * Turning a verified report into a notification for citizens.
- * Shared by the API route (server) and the Support panel (client) — no server-only imports here.
- */
 
-// Same category names the mobile app offers (app/lib/theme.dart incidentCategories).
 const DISASTER = ["tsunami", "gempa bumi", "banjir", "kebakaran", "longsor", "bencana lainnya"];
 const CRIME = ["pencurian", "penjambretan", "perampokan"];
 
-/** Which sound the citizens' phones play: bencana = 30 s disaster siren, kriminal = once. */
 export function kindForCategory(category: string): NoticeKind {
   const c = category.trim().toLowerCase();
   if (DISASTER.includes(c)) return "bencana";
@@ -30,13 +24,11 @@ type R = {
   region?: { village?: string | null; district?: string | null; city?: string | null; province?: string | null; label?: string } | null;
 };
 
-/** What actually happened: for "Bencana Lainnya" the citizen's typed text, otherwise the category. */
 export function eventName(r: R): string {
   if (r.category === "Bencana Lainnya" && r.description?.trim()) return r.description.trim();
   return r.category;
 }
 
-/** Short, readable place: "Kebon Melati, Tanah Abang, Jakarta Pusat" rather than the full street-map string. */
 function place(r: R): string {
   const g = r.region;
   if (g) {
@@ -49,7 +41,6 @@ function place(r: R): string {
   return "lokasi laporan";
 }
 
-// ---- BMKG quake, as shown in the notification (client-safe copy of the server type) ----
 export type BmkgQuake = {
   waktu: string;
   magnitudo: number;
@@ -62,10 +53,9 @@ export type BmkgQuake = {
 
 export const QUAKE_CATEGORIES = ["Gempa Bumi", "Tsunami"];
 const MAX_QUAKE_KM = 300;
-const QUAKE_BEFORE_MS = 6 * 3600_000; // quake up to 6 h before the report
-const QUAKE_AFTER_MS = 30 * 60_000; // ...or up to 30 min after
+const QUAKE_BEFORE_MS = 6 * 3600_000;
+const QUAKE_AFTER_MS = 30 * 60_000;
 
-/** Nearest BMKG quake that fits the report in space and time, or null. */
 export function matchQuake(quakes: BmkgQuake[], reportAt: string): BmkgQuake | null {
   const t = Date.parse(reportAt);
   const fits = quakes.filter((q) => {
@@ -83,7 +73,6 @@ const wib = (iso: string) => {
   return `${d.toLocaleString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(/\./g, ":")} WIB`;
 };
 
-// Safety steps per category, short enough to read at a glance on a lock screen.
 const TIPS: [RegExp, string[]][] = [
   [/tsunami/i, ["Segera jauhi pantai, menuju tempat tinggi", "Jangan menunggu air laut surut", "Ikuti jalur evakuasi dan arahan BPBD"]],
   [/gempa/i, ["Tetap tenang, lindungi kepala", "Jauhi bangunan retak, kaca, dan tiang listrik", "Waspada gempa susulan"]],
@@ -96,10 +85,6 @@ const tipsFor = (cat: string, kind: NoticeKind) =>
   TIPS.find(([re]) => re.test(cat))?.[1] ??
   (kind === "kriminal" ? TIPS[TIPS.length - 1][1] : ["Tetap tenang dan waspada", "Jauhi area berbahaya", "Ikuti arahan petugas"]);
 
-/**
- * Prefilled title + message (Support can edit both before sending). Laid out in short lines so it
- * reads easily on a phone: what happened and where, BMKG facts for quakes/tsunami, then what to do.
- */
 export function defaultNoticeText(r: R, kind: NoticeKind, quake?: BmkgQuake | null, opts: { auto?: boolean } = {}): { title: string; message: string } {
   const ev = eventName(r);
   const q = quake && QUAKE_CATEGORIES.includes(r.category) ? quake : null;
@@ -110,7 +95,6 @@ export function defaultNoticeText(r: R, kind: NoticeKind, quake?: BmkgQuake | nu
     : `Info ${ev}`
   ).slice(0, 80);
 
-  // Honest about who confirmed it: an officer, or the automatic AI + BMKG check.
   const lines: string[] = [
     opts.auto
       ? `Laporan ${ev} di ${place(r)} dikonfirmasi otomatis oleh AI dan data BMKG.`
@@ -134,12 +118,10 @@ export function defaultNoticeText(r: R, kind: NoticeKind, quake?: BmkgQuake | nu
   lines.push("", kind === "kriminal" ? "Darurat: 110 (Polisi) / 112" : "Darurat: 112");
 
   let message = lines.join("\n");
-  // Keep within the limit by dropping the least important line first ("Dirasakan").
   if (message.length > NOTICE_MESSAGE_MAX) message = lines.filter((l) => !l.startsWith("• Dirasakan")).join("\n");
   return { title, message: message.slice(0, NOTICE_MESSAGE_MAX) };
 }
 
-/** Great-circle distance in km. */
 export function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const rad = (d: number) => (d * Math.PI) / 180;
   const dLat = rad(bLat - aLat);
@@ -148,15 +130,14 @@ export function distanceKm(aLat: number, aLng: number, bLat: number, bLng: numbe
   return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-/** Record of a notification already sent for a report (shown in the panel, prevents accidental repeats). */
 export type ReportNoticeLog = {
   sent_at: string;
   scope: "nearby" | "all";
   radius_km: number | null;
-  recipients: number; // for "all": active citizens at send time
+  recipients: number;
   kind: NoticeKind;
   title: string;
   by: string;
-  auto?: boolean; // sent by the automatic AI + BMKG triage, not an officer
-  note?: string; // why (auto sends: AI confidence, BMKG quake, recipient choice)
+  auto?: boolean;
+  note?: string;
 };

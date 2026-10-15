@@ -1,7 +1,5 @@
 import 'package:audioplayers/audioplayers.dart';
 
-/// Short sound effects for the SOS button (files in assets/sounds/, made by tool/gen_sounds.dart).
-/// Failures are swallowed: a missing sound must never block an emergency.
 class SosSound {
   SosSound._();
   static final _players = <String, AudioPlayer>{};
@@ -13,7 +11,6 @@ class SosSound {
         return p;
       });
 
-  /// Loads the sounds up front so the first press plays without delay.
   static Future<void> preload() async {
     for (final n in const ['press', 'beep1', 'beep2', 'beep3', 'alarm']) {
       try {

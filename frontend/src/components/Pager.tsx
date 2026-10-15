@@ -3,13 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Select from "./Select";
 
-/** Page sizes offered everywhere ("Tampilkan 10 / 20 / 30 / 40 / 50"). */
 export const PAGE_SIZES = [10, 20, 30, 40, 50] as const;
 
-/**
- * Client-side paging for any list. Resets to page 1 when `resetKey` changes (filters, search),
- * and clamps the page when the list shrinks (e.g. after a refresh removed items).
- */
 export function usePaged<T>(items: T[], resetKey: unknown = null, initialSize = 10) {
   const [size, setSize] = useState<number>(initialSize);
   const [page, setPage] = useState(1);
@@ -24,7 +19,6 @@ export function usePaged<T>(items: T[], resetKey: unknown = null, initialSize = 
   return { slice, page: current, pages, size, setSize, setPage, total: items.length };
 }
 
-/** Page numbers with ellipses: 1 … 4 5 [6] 7 8 … 20 */
 function pageList(page: number, pages: number): (number | "…")[] {
   if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
   const out: (number | "…")[] = [1];
@@ -37,7 +31,6 @@ function pageList(page: number, pages: number): (number | "…")[] {
   return out;
 }
 
-/** "Tampilkan [10 ▾] per halaman · 1–10 dari 57 · ‹ 1 2 3 … 6 ›" */
 export default function Pager({
   page,
   pages,

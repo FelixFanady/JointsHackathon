@@ -10,11 +10,6 @@ import { scopeFor } from "@/lib/supportArea";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Support/admin: notify citizens about a VERIFIED report (SOS or citizen report).
- * Sent notices go through the same inbox the app polls (/api/mobile/notices), with a
- * `kind` that picks the sound on the phone. Every send is logged on the report.
- */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,13 +20,11 @@ async function loadReport(id: string): Promise<Rpt | null> {
   return (data as Rpt | null) ?? null;
 }
 
-/** For quake / tsunami reports: the BMKG quake that matches it (same rule as the automatic triage), else null. */
 async function quakeFor(r: Rpt) {
   if (!QUAKE_CATEGORIES.includes(r.category)) return null;
   return matchQuake(await fetchBmkg(r.lat, r.lng, 15), r.created_at);
 }
 
-/** GET ?id= -> { log, active, nearby: { "<km>": count }, quake } for the panel. */
 export async function GET(req: Request) {
   const g = await guard(["admin", "support"]);
   if (g.error) return g.error;
@@ -51,11 +44,6 @@ export async function GET(req: Request) {
   }
 }
 
-/**
- * POST { id, scope: "nearby" | "all", radius_km?, kind, level?, title, message, force? }
- * Only for reports marked valid. Without `force`, a second send for the same report is refused (409)
- * so a double click cannot alarm everyone twice.
- */
 export async function POST(req: Request) {
   const g = await guard(["admin", "support"]);
   if (g.error) return g.error;
@@ -83,7 +71,6 @@ export async function POST(req: Request) {
   if (log.length > 0 && b?.force !== true) {
     return NextResponse.json({ error: "Notifikasi untuk laporan ini sudah pernah dikirim.", already: true, log }, { status: 409 });
   }
-  // Guard against an accidental double send (double click / two tabs): same kind + scope within 60 s.
   const last = log[log.length - 1];
   if (last && last.kind === kind && last.scope === scope && Date.now() - Date.parse(last.sent_at) < 60_000) {
     return NextResponse.json({ error: "Notifikasi yang sama baru saja dikirim. Tunggu 1 menit jika memang ingin mengirim ulang.", log }, { status: 429 });

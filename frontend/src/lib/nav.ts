@@ -1,10 +1,8 @@
-import type { NavItem } from "@/components/Sidebar";
+import type { NavEntry, NavItem } from "@/components/Sidebar";
 import type { Role } from "@/lib/types";
 
-/** Status Wilayah (admin + support): ongoing alert level per area, e.g. SIAGA BENCANA GEMPA in Aceh. */
 const STATUS_NAV: NavItem = { href: "/support/status", label: "Status Wilayah", icon: "crisis_alert" };
 
-/** "Notifikasi" dropdown (admin + support): push a notification, and the log of every push. */
 const NOTIFICATIONS_NAV: NavItem = {
   href: "/support/notifications",
   label: "Notifikasi",
@@ -15,23 +13,28 @@ const NOTIFICATIONS_NAV: NavItem = {
   ],
 };
 
-/** The admin sidebar. Shared so it stays identical whether the admin is on an
- *  /admin page or inside the support console (/support/*). */
-export const ADMIN_NAV: NavItem[] = [
+export const ADMIN_NAV: NavEntry[] = [
   { href: "/admin", label: "Ringkasan", icon: "grid_view" },
-  { href: "/admin/citizens", label: "Pengguna (NIK)", icon: "badge" },
-  { href: "/admin/support", label: "Akun Support", icon: "support_agent" },
-  { href: "/admin/performance", label: "Performa Support", icon: "monitoring" },
-  { href: "/admin/settings", label: "Pengaturan", icon: "tune" },
+
+  { section: "Operasional" },
   { href: "/support/reports", label: "Laporan", icon: "inbox" },
   { href: "/support/map", label: "Peta Pemantauan", icon: "map" },
-  { href: "/support/users", label: "Pengguna & Daerah", icon: "groups" },
   STATUS_NAV,
   NOTIFICATIONS_NAV,
+
+  { section: "Warga" },
+  { href: "/admin/citizens", label: "Pengguna (NIK)", icon: "badge" },
+  { href: "/support/users", label: "Pengguna & Daerah", icon: "groups" },
+
+  { section: "Tim & Akses" },
+  { href: "/admin/users", label: "Users", icon: "shield" },
+  { href: "/admin/support", label: "Akun Support", icon: "support_agent" },
+  { href: "/admin/performance", label: "Performa Support", icon: "monitoring" },
+
+  { section: "Sistem" },
+  { href: "/admin/settings", label: "Pengaturan", icon: "tune" },
 ];
 
-/** The plain support sidebar, for non-admin support staff only. Laporan and Peta live here
- *  (the old centered Laporan/Peta switch in the header was removed). */
 export const SUPPORT_NAV: NavItem[] = [
   { href: "/support/reports", label: "Laporan", icon: "inbox" },
   { href: "/support/map", label: "Peta Pemantauan", icon: "map" },
@@ -40,8 +43,7 @@ export const SUPPORT_NAV: NavItem[] = [
   NOTIFICATIONS_NAV,
 ];
 
-/** Sidebar config (title + items) for the given role on a support page. */
-export function sidebarForSupport(role: Role): { title: string; items: NavItem[] } {
+export function sidebarForSupport(role: Role): { title: string; items: NavEntry[] } {
   return role === "admin"
     ? { title: "Admin Panel", items: ADMIN_NAV }
     : { title: "Pusat Operasi", items: SUPPORT_NAV };

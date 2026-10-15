@@ -1,12 +1,5 @@
 "use client";
 
-/**
- * Shrink an image File to a small square-ish JPEG data-URI, entirely in the
- * browser, so the server never receives a multi-megabyte upload.
- *
- * Default target: longest edge 256px, JPEG quality 0.72 -> typically 10-25 KB.
- * Returns a `data:image/jpeg;base64,...` string.
- */
 export async function compressImage(
   file: File,
   { maxEdge = 256, quality = 0.72 }: { maxEdge?: number; quality?: number } = {},
@@ -28,7 +21,6 @@ export async function compressImage(
   if ("close" in bitmap && typeof bitmap.close === "function") bitmap.close();
 
   let dataUri = canvas.toDataURL("image/jpeg", quality);
-  // Hard safety net to stay under the DB/server limit; step quality down if needed.
   let q = quality;
   while (dataUri.length > 340000 && q > 0.4) {
     q -= 0.1;
@@ -42,7 +34,6 @@ async function loadBitmap(file: File): Promise<ImageBitmap | HTMLImageElement> {
     try {
       return await createImageBitmap(file);
     } catch {
-      /* fall through to <img> */
     }
   }
   const url = URL.createObjectURL(file);
@@ -59,7 +50,6 @@ async function loadBitmap(file: File): Promise<ImageBitmap | HTMLImageElement> {
   }
 }
 
-/** Rough KB size of a base64 data-URI (for showing the user how small it got). */
 export function dataUriKb(uri: string): number {
   const b64 = uri.slice(uri.indexOf(",") + 1);
   return Math.round((b64.length * 3) / 4 / 1024);

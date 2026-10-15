@@ -9,7 +9,6 @@ export const dynamic = "force-dynamic";
 
 const MESSAGE_MAX = 800;
 
-/** One push as the log shows it: every recipient row of a single send folded into one entry. */
 type Batch = {
   id: string;
   title: string;
@@ -31,7 +30,7 @@ type Batch = {
 function toBatches(rows: Notice[]): Batch[] {
   const m = new Map<string, Batch>();
   for (const n of rows) {
-    const key = n.batch ?? `${n.created_at}|${n.title}|${n.by}`; // older rows: same send = same time + title + sender
+    const key = n.batch ?? `${n.created_at}|${n.title}|${n.by}`;
     let b = m.get(key);
     if (!b) {
       b = {
@@ -50,10 +49,6 @@ function toBatches(rows: Notice[]): Batch[] {
   return [...m.values()].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
 }
 
-/**
- * Notification log (Notifikasi › Riwayat). Admins and "ALL" officers see every push; an officer
- * restricted to some provinces sees the pushes they made themselves.
- */
 export async function GET() {
   const g = await guard(["admin", "support"]);
   if (g.error) return g.error;
@@ -63,10 +58,6 @@ export async function GET() {
   return NextResponse.json({ notices: toBatches(area === null ? rows : rows.filter(mine)), scope: area === null ? "all" : "own" });
 }
 
-/**
- * Push a notification (Notifikasi › Buat Notifikasi).
- * Body: { targets: "all" | string[] (NIKs), title, message, level?: info|warning|danger, kind?: bencana|kriminal|umum, target_label? }
- */
 export async function POST(req: Request) {
   const g = await guard(["admin", "support"]);
   if (g.error) return g.error;
@@ -80,7 +71,6 @@ export async function POST(req: Request) {
   if (title.length < 2) return NextResponse.json({ error: "Judul minimal 2 karakter." }, { status: 400 });
   if (message.length < 2) return NextResponse.json({ error: "Isi pesan minimal 2 karakter." }, { status: 400 });
 
-  // Restricted Support officer: "all" = everyone in their assigned provinces, and NIKs outside them are refused.
   const area = await scopeFor(g.user);
   const areaCitizens = area === null ? null : (await citizensAround(0, 0, area)).active;
   const inArea = areaCitizens === null ? null : new Set(areaCitizens.map((c) => c.nik));
@@ -112,7 +102,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Pilih penerima." }, { status: 400 });
   }
 
-  // Every row records who pushed it (name, username, role, id) for the notification log.
   const err = await sendNotices(targets, {
     title, message, level, kind, source: "manual",
     target_label: targetLabel ?? (b?.targets === "all" ? (inArea === null ? "Semua warga" : "Semua warga di wilayah tugas") : `${targets.length} warga dipilih`),

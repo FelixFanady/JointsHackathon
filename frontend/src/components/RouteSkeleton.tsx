@@ -1,6 +1,3 @@
-// Instant placeholders shown by each route's loading.tsx while the page's server data loads.
-// The real page title is rendered right away (it is static), only the data area is a skeleton,
-// so switching pages feels immediate instead of showing a spinner.
 
 type Variant = "stats" | "reports" | "table" | "form" | "map";
 

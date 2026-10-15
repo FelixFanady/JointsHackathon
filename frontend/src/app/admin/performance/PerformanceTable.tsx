@@ -14,7 +14,6 @@ export type PerfRow = {
   active: boolean;
 };
 
-/** Personnel ranking table with paging (rows arrive already sorted from the server). */
 export default function PerformanceTable({ rows, max }: { rows: PerfRow[]; max: number }) {
   const paged = usePaged(rows);
   const offset = (paged.page - 1) * paged.size;

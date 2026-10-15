@@ -2,23 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 
-/**
- * In-app confirm / alert dialogs that replace the browser's window.confirm / window.alert, so every
- * pop-up in the dashboard has the same look as the other modals (same overlay, card, buttons, animation).
- *
- *   if (!(await confirmDialog({ title: "Kirim notifikasi?", message: "…", confirmLabel: "Kirim" }))) return;
- *   await alertDialog({ title: "Gagal", message: "…", tone: "danger" });
- *
- * <DialogHost /> is mounted once in the root layout. Esc / click outside = cancel, Enter = confirm.
- */
 
 export type DialogTone = "primary" | "danger" | "warning";
 export type DialogOptions = {
   title: string;
   message?: string;
-  /** Key–value rows shown as a summary (e.g. ["Penerima", "3 warga"]). */
   details?: [string, string][];
-  /** Highlighted note above the buttons (e.g. "Sudah pernah dikirim"). */
   note?: string;
   confirmLabel?: string;
   cancelLabel?: string;
@@ -32,7 +21,7 @@ let enqueue: ((r: Req) => void) | null = null;
 export function confirmDialog(o: DialogOptions): Promise<boolean> {
   return new Promise((resolve) => {
     if (enqueue) enqueue({ ...o, kind: "confirm", resolve });
-    else resolve(window.confirm([o.title, o.message].filter(Boolean).join("\n\n"))); // host not mounted (should not happen)
+    else resolve(window.confirm([o.title, o.message].filter(Boolean).join("\n\n")));
   });
 }
 
@@ -56,7 +45,6 @@ export function DialogHost() {
     return () => { enqueue = null; };
   }, []);
 
-  // Focus the main button and lock page scroll while a dialog is open.
   useEffect(() => {
     if (!cur) return;
     const prevFocus = document.activeElement as HTMLElement | null;

@@ -28,7 +28,6 @@ export type UserRegion = {
   source: "gps" | "address";
 };
 
-/** Polls /api/users (all citizens + area + last login). `photos: false` leaves out profile photos (much smaller). */
 export function useUsers(intervalMs = 20000, opts: { photos?: boolean } = {}) {
   const photos = opts.photos !== false;
   const [users, setUsers] = useState<DirectoryUser[]>([]);

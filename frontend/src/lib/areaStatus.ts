@@ -2,11 +2,6 @@ import "server-only";
 import { db } from "./supabase";
 import { isActive, type AreaStatus } from "./areaStatusMeta";
 
-/**
- * Storage for "Status Wilayah" in the `settings` table: one row per status, key
- * `area_status:<13-digit epoch>-<rand>` (so key order = creation order). Not personal data, so not encrypted.
- * Ending a status keeps the row (ended_at / ended_by) as the audit trail.
- */
 
 const PREFIX = "area_status:";
 
@@ -27,7 +22,6 @@ async function write(s: AreaStatus): Promise<string | null> {
   return error ? error.message : null;
 }
 
-/** Save a new status. A still-active status for the same area + hazard is ended as "replaced" (e.g. Waspada -> Siaga). */
 export async function createStatus(s: Omit<AreaStatus, "id">): Promise<{ status: AreaStatus; replaced: number } | { error: string }> {
   const now = new Date();
   const id = `${PREFIX}${String(now.getTime()).padStart(13, "0")}-${Math.random().toString(36).slice(2, 8)}`;

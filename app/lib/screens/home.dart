@@ -17,7 +17,6 @@ const holdDuration = Duration(seconds: 3);
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.onOpenNearby});
-  /// Opens the "Sekitar" tab (tapping the Status Sekitar card).
   final VoidCallback onOpenNearby;
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -87,7 +86,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
           const SizedBox(height: 32),
-          // Status Wilayah (set by Support/Admin) — replaces the old "Status Sekitar" card.
           AreaStatusCard(key: _statusKey, onOpen: widget.onOpenNearby),
         ],
       ),
@@ -95,10 +93,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 }
 
-/// Hold-to-activate SOS (3 s), per DESIGN.md.
-/// A flat red push button in a white bezel: no gloss, no glow. Idle: one faint halo.
-/// Pressed: the face is pushed down onto its darker base, the ring on the bezel fills (ticks mark
-/// the seconds) and the countdown replaces "SOS", with one beep per second; release early = cancel.
 class _SosButton extends StatefulWidget {
   const _SosButton({required this.hold});
   final AnimationController hold;
@@ -123,7 +117,6 @@ class _SosButtonState extends State<_SosButton> with SingleTickerProviderStateMi
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Respect the system "remove animations" setting.
     if (MediaQuery.of(context).disableAnimations) {
       idle.stop();
     } else if (!idle.isAnimating) {
@@ -138,7 +131,6 @@ class _SosButtonState extends State<_SosButton> with SingleTickerProviderStateMi
     super.dispose();
   }
 
-  // One beep + vibration per second while holding: 3 (low) -> 2 -> 1 (high).
   void _onTick() {
     if (!down || hold.value >= 1) return;
     final s = (hold.value * holdDuration.inSeconds).floor();
@@ -179,17 +171,15 @@ class _SosButtonState extends State<_SosButton> with SingleTickerProviderStateMi
             final t = idle.value;
             final pressed = down && v > 0;
             final still = MediaQuery.of(context).disableAnimations;
-            // The countdown number pops slightly at the start of each second.
             final frac = (v * holdDuration.inSeconds) % 1;
             final pop = 1 + .18 * (1 - Curves.easeOut.transform(math.min(frac * 5, 1)));
             final remaining = (holdDuration.inSeconds - v * holdDuration.inSeconds).ceil().clamp(1, holdDuration.inSeconds);
             const face = 196.0;
-            const lip = 7.0; // visible side of the button below the face, like a real push button
+            const lip = 7.0;
 
             return SizedBox(
               width: 300, height: 300,
               child: Stack(alignment: Alignment.center, children: [
-                // Idle: one slow, faint halo. Nothing while held, nothing with reduced motion.
                 if (!down && !still)
                   IgnorePointer(
                     child: Container(
@@ -200,7 +190,6 @@ class _SosButtonState extends State<_SosButton> with SingleTickerProviderStateMi
                       ),
                     ),
                   ),
-                // Bezel: a plain white collar the button sits in.
                 Container(
                   width: 252, height: 252,
                   decoration: BoxDecoration(
@@ -210,9 +199,7 @@ class _SosButtonState extends State<_SosButton> with SingleTickerProviderStateMi
                     boxShadow: [BoxShadow(color: const Color(0xFF14213D).withValues(alpha: .07), blurRadius: 28, offset: const Offset(0, 12))],
                   ),
                 ),
-                // Hold progress on the bezel, with a tick for each second.
                 CustomPaint(size: const Size(230, 230), painter: _HoldRingPainter(v: v, pressed: pressed)),
-                // Button: a darker base (the "side") and the face on top. Pressing pushes the face down onto it.
                 SizedBox(
                   width: face, height: face + lip,
                   child: Stack(children: [
@@ -273,7 +260,6 @@ class _SosButtonState extends State<_SosButton> with SingleTickerProviderStateMi
   }
 }
 
-/// Hold progress: one continuous arc on the bezel, with small ticks marking each second.
 class _HoldRingPainter extends CustomPainter {
   _HoldRingPainter({required this.v, required this.pressed});
   final double v;
@@ -306,7 +292,6 @@ class _HoldRingPainter extends CustomPainter {
           ..color = C.emergencyDark,
       );
     }
-    // Second ticks: thin white notches across the track.
     final tick = Paint()
       ..color = Colors.white
       ..strokeWidth = 2.5;
@@ -321,7 +306,6 @@ class _HoldRingPainter extends CustomPainter {
   bool shouldRepaint(_HoldRingPainter old) => old.v != v || old.pressed != pressed;
 }
 
-/// Emergency flow: Foto (opsional) -> Jenis bencana -> Konfirmasi -> Terkirim.
 class SosFlow extends StatefulWidget {
   const SosFlow({super.key});
   @override
@@ -329,16 +313,16 @@ class SosFlow extends StatefulWidget {
 }
 
 class _SosFlowState extends State<SosFlow> {
-  int step = 0; // 0 foto, 1 jenis, 2 konfirmasi, 3 terkirim
+  int step = 0;
   String? photoB64;
   Uint8List? photoBytes;
   String? category;
   Place? place;
-  String? address; // readable street address of [place] (null while looking up / not found)
+  String? address;
   bool addressLoading = false;
   String? locError;
   bool sending = false;
-  String? sentCode; // report ID returned by the server, shown on the "terkirim" step
+  String? sentCode;
   String? error;
   final otherCtrl = TextEditingController();
 
@@ -494,7 +478,6 @@ class _SosFlowState extends State<SosFlow> {
                     ),
                 ],
               ),
-              // "Bencana Lainnya": let the citizen type what is happening.
               if (e.value.any((c) => c.$2 == otherCategory))
                 AnimatedSize(
                   duration: const Duration(milliseconds: 250),
@@ -615,7 +598,6 @@ class _SosFlowState extends State<SosFlow> {
     );
   }
 
-  /// What the citizen sees as "where": street address when known, never raw coordinates.
   String get locationText {
     if (place == null) return locError ?? 'Mencari lokasi Anda…';
     if (address != null) return address!;
@@ -680,7 +662,6 @@ class _SosFlowState extends State<SosFlow> {
         ),
       ]);
 
-  // Icon tile | label above value: every row has the same left edge, long values (addresses) wrap cleanly.
   Widget _row(IconData i, String k, String v, {bool muted = false, Widget? trailing}) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           width: 40, height: 40,
@@ -698,7 +679,6 @@ class _SosFlowState extends State<SosFlow> {
         if (trailing != null) Padding(padding: const EdgeInsets.only(left: 8, top: 10), child: trailing),
       ]);
 
-  // Shared with the citizen report flow (widgets/sent_view.dart) so both confirmations look the same.
   Widget _doneStep() => SentView(
         title: 'Laporan Diterima',
         code: sentCode,
@@ -707,9 +687,6 @@ class _SosFlowState extends State<SosFlow> {
       );
 }
 
-/// Slide-to-send for the emergency call: a deliberate gesture so it is never sent by an accidental tap.
-/// Drag the thumb to the end (>= 85 %) to confirm; let go earlier and it springs back.
-/// Screen readers get a plain "double-tap to send" action instead of the drag.
 class _SlideToSend extends StatefulWidget {
   const _SlideToSend({required this.label, required this.onConfirmed, this.loading = false});
   final String label;
@@ -722,9 +699,8 @@ class _SlideToSend extends StatefulWidget {
 class _SlideToSendState extends State<_SlideToSend> with TickerProviderStateMixin {
   static const _h = 68.0, _pad = 6.0;
   late final AnimationController back = AnimationController(vsync: this, duration: const Duration(milliseconds: 360));
-  // Idle hint: a light sweep across the label and chevrons that "flow" towards the end.
   late final AnimationController hint = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
-  double drag = 0; // 0..1
+  double drag = 0;
   double from = 0;
   bool dragging = false;
   bool done = false;
@@ -748,7 +724,6 @@ class _SlideToSendState extends State<_SlideToSend> with TickerProviderStateMixi
   @override
   void didUpdateWidget(covariant _SlideToSend old) {
     super.didUpdateWidget(old);
-    // Sending finished without leaving the screen (e.g. an error): let them slide again.
     if (old.loading && !widget.loading && done) {
       done = false;
       _springBack();
@@ -818,7 +793,6 @@ class _SlideToSendState extends State<_SlideToSend> with TickerProviderStateMixi
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(_h / 2),
                   child: Stack(children: [
-                    // Glossy top highlight.
                     Positioned(
                       left: 0, right: 0, top: 0, height: _h / 2,
                       child: DecoratedBox(
@@ -831,7 +805,6 @@ class _SlideToSendState extends State<_SlideToSend> with TickerProviderStateMixi
                         ),
                       ),
                     ),
-                    // Filled trail that follows the thumb.
                     Positioned(
                       left: _pad, top: _pad, bottom: _pad,
                       width: thumb + x,
@@ -842,7 +815,6 @@ class _SlideToSendState extends State<_SlideToSend> with TickerProviderStateMixi
                         ),
                       ),
                     ),
-                    // Label + flowing chevrons, centred in the free space; fades as the thumb passes.
                     Positioned.fill(
                       left: thumb + _pad + 6,
                       right: 14,
@@ -858,7 +830,7 @@ class _SlideToSendState extends State<_SlideToSend> with TickerProviderStateMixi
                                     child: ShaderMask(
                                       blendMode: BlendMode.srcIn,
                                       shaderCallback: (r) {
-                                        final t = hint.value * 2 - .5; // sweep from left to right
+                                        final t = hint.value * 2 - .5;
                                         return LinearGradient(
                                           colors: const [Color(0xCCFFFFFF), Colors.white, Color(0xCCFFFFFF)],
                                           stops: [(t - .2).clamp(0.0, 1.0), t.clamp(0.0, 1.0), (t + .2).clamp(0.0, 1.0)],
@@ -879,7 +851,6 @@ class _SlideToSendState extends State<_SlideToSend> with TickerProviderStateMixi
                         ),
                       ),
                     ),
-                    // Thumb.
                     Positioned(
                       left: _pad + x,
                       top: _pad,
@@ -920,7 +891,6 @@ class _SlideToSendState extends State<_SlideToSend> with TickerProviderStateMixi
   }
 }
 
-/// Outlined "Kembali" pill under the slide button: clearly a secondary action, same width as the slider.
 class _BackButton extends StatelessWidget {
   const _BackButton({required this.onPressed});
   final VoidCallback? onPressed;

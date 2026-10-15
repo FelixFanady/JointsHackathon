@@ -7,12 +7,8 @@ import { loadAllProfiles, resolveProfileGeo } from "@/lib/citizenProfile";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const BATCH = 6; // Nominatim allows ~1 request/second, so keep each call short
+const BATCH = 6;
 
-/**
- * Resolve districts/cities from the street map for users that don't have one yet
- * (GPS point first, else address text). Call repeatedly until `remaining` is 0.
- */
 export async function POST() {
   const g = await guard(["admin", "support"]);
   if (g.error) return g.error;
@@ -40,9 +36,7 @@ export async function POST() {
       const changed = t.via === "gps" ? await resolveActivityRegion(t.nik) : await resolveProfileGeo(t.nik);
       if (changed) resolved++;
     } catch {
-      /* skip, try next */
     }
   }
-  // Items that failed to resolve stay in `todo`; the UI stops once a call makes no progress.
   return NextResponse.json({ resolved, remaining: Math.max(0, todo.length - Math.min(todo.length, BATCH)), attempted: Math.min(todo.length, BATCH) });
 }

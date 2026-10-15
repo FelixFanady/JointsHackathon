@@ -28,7 +28,6 @@ type Batch = {
 const SOURCE_LABEL = { manual: "Halaman Notifikasi", report: "Dari laporan", auto: "Otomatis (AI + BMKG)" } as const;
 const ROLE_LABEL: Record<string, string> = { admin: "Admin", support: "Support", system: "Sistem" };
 
-/** Notifikasi › Riwayat: every push, newest first, with who sent it. */
 export default function HistoryClient() {
   const [items, setItems] = useState<Batch[] | null>(null);
   const [scope, setScope] = useState<"all" | "own">("all");

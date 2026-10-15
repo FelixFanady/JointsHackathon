@@ -1,4 +1,3 @@
-// Shown by loading.tsx while a page's server data loads, so navigation feels instant instead of frozen.
 export default function PageSkeleton() {
   return (
     <div className="page" role="status" aria-busy="true" aria-live="polite">

@@ -5,11 +5,6 @@ import { usePathname } from "next/navigation";
 import RouteSkeleton from "./RouteSkeleton";
 import { routeMeta } from "@/lib/routeMeta";
 
-/**
- * Instant page switch: the moment a menu link is clicked, the main area shows the target
- * page's title + skeleton, without waiting for the server (which in dev also compiles the
- * page, and in prod still has to answer). The real page replaces it as soon as it arrives.
- */
 
 type Ctx = { pending: string | null; start: (href: string) => void };
 const NavCtx = createContext<Ctx>({ pending: null, start: () => {} });
@@ -18,9 +13,7 @@ export function NavPendingProvider({ children }: { children: React.ReactNode }) 
   const path = usePathname();
   const [pending, setPending] = useState<string | null>(null);
 
-  // Arrived (or the URL changed some other way): drop the placeholder.
   useEffect(() => { setPending(null); }, [path]);
-  // Safety net: never leave a skeleton up if a navigation fails or is cancelled.
   useEffect(() => {
     if (!pending) return;
     const t = setTimeout(() => setPending(null), 15_000);
@@ -35,7 +28,6 @@ export function NavPendingProvider({ children }: { children: React.ReactNode }) 
   return <NavCtx.Provider value={{ pending, start }}>{children}</NavCtx.Provider>;
 }
 
-/** onClick for a <Link>: shows the placeholder for plain left clicks (not new-tab / modified clicks). */
 export function useNavStart() {
   const { start } = useContext(NavCtx);
   return (href: string) => (e: React.MouseEvent) => {
@@ -44,7 +36,11 @@ export function useNavStart() {
   };
 }
 
-/** Wraps the page area: renders the target page's skeleton while a navigation is pending. */
+export function usePendingPath(): string | null {
+  const { pending } = useContext(NavCtx);
+  return pending ? pending.split(/[?#]/)[0] : null;
+}
+
 export function PendingArea({ children }: { children: React.ReactNode }) {
   const { pending } = useContext(NavCtx);
   if (!pending) return <>{children}</>;

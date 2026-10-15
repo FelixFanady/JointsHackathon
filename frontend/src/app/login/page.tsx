@@ -2,37 +2,85 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import LoginForm from "./LoginForm";
 
+export const metadata = { title: "Masuk — SiagaKu Pusat Operasi" };
+
+const LEVELS = [
+  { key: "normal", label: "Normal", note: "Tidak ada ancaman aktif" },
+  { key: "waspada", label: "Waspada", note: "Potensi bencana, pantau" },
+  { key: "siaga", label: "Siaga", note: "Bersiap evakuasi" },
+  { key: "awas", label: "Awas", note: "Evakuasi sekarang" },
+];
+
 export default async function LoginPage() {
   const user = await getCurrentUser();
   if (user) redirect("/");
 
   return (
     <div className="login">
-      <section className="hero">
-        <div>
-          <span className="chip">Portal Internal Tim Operasional</span>
-          <div className="brand-row">
-            <div className="logo"><span className="msym">shield</span></div>
-            <strong>SiagaKu <span>Support</span></strong>
+      <aside className="login-side" aria-label="Tentang SiagaKu">
+        <div className="login-brand">
+          <div className="logo">
+            <span className="msym">shield</span>
+          </div>
+          <div>
+            <strong>SiagaKu</strong>
+            <small>Pusat Operasi</small>
           </div>
         </div>
-        <div>
-          <h2>Pantau. Verifikasi. Lindungi.</h2>
-          <p>Sistem koordinasi penanganan laporan darurat dan pemantauan warga terpadu seluruh wilayah.</p>
+
+        <div className="login-copy">
+          <h2>Konsol petugas untuk laporan darurat warga.</h2>
+          <p>
+            Laporan dan SOS dari aplikasi SiagaKu masuk ke sini. Petugas
+            memverifikasi, memetakan, dan mengirim peringatan ke warga sesuai
+            wilayah tugasnya.
+          </p>
+
+          <div
+            className="levels"
+            role="list"
+            aria-label="Tingkat status wilayah"
+          >
+            {LEVELS.map((l) => (
+              <div key={l.key} className={`lv lv-${l.key}`} role="listitem">
+                <i aria-hidden />
+                <b>{l.label}</b>
+                <span>{l.note}</span>
+              </div>
+            ))}
+          </div>
         </div>
-        <footer>
-          <span>© 2026 SiagaKu Platform</span>
-          <span>Akses hanya untuk petugas terdaftar</span>
-        </footer>
-      </section>
-      <section className="panel">
-        <div className="form-card">
-          <div className="key"><span className="msym">vpn_key</span></div>
-          <h1>Masuk ke Akun Anda</h1>
-          <p className="lead">Gunakan kredensial yang dibuat oleh admin untuk melanjutkan ke konsol.</p>
+
+        <div className="login-foot">
+          <div className="sos">
+            <span className="msym sm">call</span>
+            <span>
+              Butuh bantuan darurat? Hubungi <b>112</b>. Halaman ini hanya untuk
+              petugas.
+            </span>
+          </div>
+          <small>© 2026 SiagaKu</small>
+        </div>
+      </aside>
+
+      <main className="login-main">
+        <div className="login-form">
+          <div className="login-brand compact" aria-hidden>
+            <div className="logo">
+              <span className="msym">shield</span>
+            </div>
+            <strong>SiagaKu</strong>
+          </div>
+          <h1>Masuk</h1>
+          <p className="lead">
+            Gunakan username dan kata sandi yang diberikan admin.
+          </p>
           <LoginForm />
+          <p className="help">
+            Lupa kata sandi atau akun terkunci? Minta admin untuk meresetnya.
+          </p>
         </div>
-      </section>
+      </main>
     </div>
   );
 }

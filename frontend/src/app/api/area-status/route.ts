@@ -9,12 +9,6 @@ import { HAZARDS, SCOPE_ALL, STATUS_LEVELS, isHazard, isStatusLevel, scopeLabel,
 
 export const dynamic = "force-dynamic";
 
-/**
- * Status Wilayah (admin + support).
- * GET  -> { statuses, can_all, areas }   (an officer restricted to provinces sees "ALL" statuses + their provinces)
- * POST -> set a status   { scope: "ALL" | province, level, hazard, hazard_label?, message?, duration_hours?, notify? }
- * PATCH-> end a status   { id }
- */
 export async function GET() {
   const g = await guard(["admin", "support"]);
   if (g.error) return g.error;
@@ -49,7 +43,6 @@ export async function POST(req: Request) {
   const endsAt = Number.isFinite(hours) && hours > 0 && hours <= 24 * 30 ? new Date(Date.now() + hours * 3600_000).toISOString() : null;
   const title = statusTitle(level, hazardLabel);
 
-  // Optional push to the citizens in that area, so the status does not wait for them to open the app.
   let notified: number | null = null;
   if (b?.notify === true) {
     const targets =
@@ -61,13 +54,13 @@ export async function POST(req: Request) {
         title: `${title} · ${scopeLabel(area)}`.slice(0, 80),
         message: message || STATUS_LEVELS.find((l) => l.key === level)!.desc,
         level: level === "waspada" ? "warning" : "danger",
-        kind: level === "waspada" ? "umum" : "bencana", // siren only for Siaga / Awas
+        kind: level === "waspada" ? "umum" : "bencana",
         source: "manual",
         target_label: `Status wilayah: ${scopeLabel(area)}`,
         by: g.user.full_name, by_id: g.user.id, by_username: g.user.username, by_role: g.user.role,
       });
       if (err) return NextResponse.json({ error: `Status belum disimpan: notifikasi gagal dikirim (${err}).` }, { status: 500 });
-      notified = area === SCOPE_ALL ? -1 : targets.length; // -1 = broadcast to everyone
+      notified = area === SCOPE_ALL ? -1 : targets.length;
     } else {
       notified = 0;
     }

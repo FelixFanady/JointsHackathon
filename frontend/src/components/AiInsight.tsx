@@ -16,9 +16,7 @@ export default function AiInsight({
   ids: string[];
   initial: AiVerdict | null;
   label?: string;
-  /** An AI check is already in progress for these reports (auto triage or another officer). */
   running?: boolean;
-  /** Finer status from the AI queue: checking now, waiting for a free AI slot, or given up. */
   state?: "running" | "queued" | "failed" | null;
   onDone?: () => void;
 }) {
@@ -27,7 +25,6 @@ export default function AiInsight({
   const [error, setError] = useState("");
   const working = busy || running;
 
-  // A verdict that arrives through polling (auto triage / another officer) shows without a refresh.
   const initialSig = initial ? `${initial.verdict}|${initial.confidence}|${initial.summary}` : "";
   useEffect(() => {
     if (initial) {
@@ -48,7 +45,7 @@ export default function AiInsight({
         body: JSON.stringify({ ids: ids.slice(0, 60) }),
       });
       const j = await res.json().catch(() => ({}));
-      if (j.running) onDone?.(); // another check is already running: refresh to pick up its progress/result
+      if (j.running) onDone?.();
       else if (!res.ok) setError(j.error ?? "Analisis AI gagal.");
       else {
         setVerdict(j.verdict);

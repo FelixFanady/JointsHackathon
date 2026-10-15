@@ -25,10 +25,6 @@ const KINDS: [NoticeKind, string, string, string][] = [
 ];
 const KIND_LABEL: Record<NoticeKind, string> = { bencana: "Bencana alam", kriminal: "Kriminal", umum: "Umum" };
 
-/**
- * Shown under a VERIFIED report: send a notification about it to citizens near the
- * incident (by their last known location) or to everyone. Mount with key={report.id}.
- */
 export default function NotifyPanel({ report, aiRunning = false }: { report: Report; aiRunning?: boolean }) {
   const [info, setInfo] = useState<Info | null>(null);
   const [loadErr, setLoadErr] = useState("");
@@ -53,11 +49,8 @@ export default function NotifyPanel({ report, aiRunning = false }: { report: Rep
       setLoadErr("Tidak dapat terhubung ke server.");
     }
   }, [report.id]);
-  // Load on mount, and again when the automatic triage finishes (it may have just sent its own alert),
-  // so the "already sent" state shows without a refresh and nobody sends a duplicate.
   useEffect(() => { load(); }, [aiRunning, load]);
 
-  // BMKG data arrives with the panel info: refill the prefilled text with it (until Support edits).
   const quakeSig = info?.quake ? `${info.quake.waktu}|${info.quake.wilayah}` : "";
   useEffect(() => {
     if (edited || !info) return;
@@ -69,7 +62,6 @@ export default function NotifyPanel({ report, aiRunning = false }: { report: Rep
 
   function pickKind(k: NoticeKind) {
     setKind(k);
-    // Keep the prefilled text in step with the kind until Support writes their own.
     if (!edited) {
       const t = defaultNoticeText(report, k, info?.quake);
       setTitle(t.title);

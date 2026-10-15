@@ -5,7 +5,6 @@ import '../api.dart';
 import '../theme.dart';
 import 'face_verify.dart';
 
-/// Step 1: NIK entry with the on-screen numpad from the design.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -20,7 +19,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    // Signed out by the app itself (account deactivated)? Say why, once.
     error = session.kickedReason;
     session.kickedReason = null;
   }
@@ -134,7 +132,6 @@ class _Numpad extends StatelessWidget {
 
   static const _sub = {'2': 'ABC', '3': 'DEF', '4': 'GHI', '5': 'JKL', '6': 'MNO', '7': 'PQRS', '8': 'TUV', '9': 'WXYZ'};
 
-  // Not named `key`: that would clash with the inherited `Widget.key` field.
   Widget _digit(String d) => Expanded(
         child: Padding(
           padding: const EdgeInsets.all(5),
@@ -189,8 +186,6 @@ class _Numpad extends StatelessWidget {
   }
 }
 
-/// Step 2: "Masuk sebagai <name>" with "Bukan Anda?" to change NIK.
-/// Step 3: face -- enrol once when no profile photo exists yet, otherwise verify against it.
 class ConfirmIdentityScreen extends StatelessWidget {
   const ConfirmIdentityScreen({super.key, required this.nik, required this.name, required this.faceRegistered});
   final String nik, name;
@@ -256,7 +251,7 @@ class ConfirmIdentityScreen extends StatelessWidget {
                 final token = await Navigator.of(context).push<String>(
                   MaterialPageRoute(builder: (_) => FaceScreen(nik: nik, name: name, enroll: !faceRegistered)),
                 );
-                if (token == null) return; // backed out or not matched: stay here
+                if (token == null) return;
                 await session.signIn(nik, name, faceToken: token);
                 if (context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);
               },

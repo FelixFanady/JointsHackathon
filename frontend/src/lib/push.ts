@@ -3,30 +3,15 @@ import { createSign } from "node:crypto";
 import { db } from "./supabase";
 import { open, seal, tryOpen } from "./crypto";
 
-/**
- * Push delivery to the phones through Firebase Cloud Messaging (HTTP v1), so a notice reaches the
- * citizen even when the SiagaKu app is closed.
- *
- * Needs ONE server-side env var, FIREBASE_SERVICE_ACCOUNT: the service-account JSON downloaded from
- * Firebase console > Project settings > Service accounts (raw JSON, or base64 of it). Without it
- * every function here is a no-op, and the app keeps working through its in-app polling.
- *
- * Messages are DATA-ONLY (no "notification" block): the app builds the notification itself, so the
- * siren sound, vibration, level emoji and big photo stay identical to the polled ones.
- *
- * Tokens live in the existing `settings` table, one encrypted row per citizen: `push:<nik>`.
- * No new tables, same approach as citizenActivity.ts.
- */
 
 export const BROADCAST_TOPIC = "siagaku_all";
 const PREFIX = "push:";
-const MAX_TOKENS_PER_CITIZEN = 3; // a citizen's few devices; oldest is dropped
+const MAX_TOKENS_PER_CITIZEN = 3;
 const keyFor = (nik: string) => `${PREFIX}${nik}`;
 
 type TokenRow = { tokens: { t: string; at: string }[] };
-const TOKEN_RE = /^[A-Za-z0-9_:.\-]{50,4096}$/; // FCM registration tokens look like "id:APA91b..."
+const TOKEN_RE = /^[A-Za-z0-9_:.\-]{50,4096}$/;
 
-// ---------- token store ----------
 
 async function load(nik: string): Promise<TokenRow> {
   const { data } = await db().from("settings").select("value").eq("key", keyFor(nik)).maybeSingle();
@@ -44,8 +29,6 @@ async function save(nik: string, row: TokenRow): Promise<void> {
 
 export const validToken = (t: unknown): t is string => typeof t === "string" && TOKEN_RE.test(t);
 
-/** Remember this phone for the citizen (idempotent). The same token is removed from every other citizen
- *  that holds it, so a shared/handed-over phone only ever receives the signed-in citizen's notices. */
 export async function registerToken(nik: string, token: string): Promise<void> {
   await dropTokenEverywhere(token, nik);
   const row = await load(nik);
@@ -84,7 +67,6 @@ async function tokensFor(niks: string[]): Promise<Map<string, string[]>> {
   return out;
 }
 
-// ---------- FCM HTTP v1 ----------
 
 type ServiceAccount = { project_id: string; client_email: string; private_key: string };
 let account: ServiceAccount | null | undefined;
@@ -101,7 +83,6 @@ function serviceAccount(): ServiceAccount | null {
       account = { project_id: j.project_id, client_email: j.client_email, private_key: String(j.private_key).replace(/\\n/g, "\n") };
     }
   } catch {
-    /* malformed -> push disabled, polling still works */
   }
   return account;
 }
@@ -137,10 +118,9 @@ async function accessToken(sa: ServiceAccount): Promise<string> {
   return j.access_token;
 }
 
-/** What the phone needs to build the notification itself. FCM data values must all be strings. */
 export type PushPayload = {
-  id: string; // the notice id: the app uses it so a notice is never shown twice (push + polling)
-  to: string; // "all" or a NIK: the app ignores a push meant for someone else signed in earlier on the same phone
+  id: string;
+  to: string;
   title: string;
   message: string;
   level: string;
@@ -154,7 +134,6 @@ function toData(p: PushPayload): Record<string, string> {
   const d: Record<string, string> = {
     id: p.id,
     to: p.to,
-    // FCM caps the whole message at 4 KB; keep the text well under it (the app can fetch the full text by polling).
     title: p.title.slice(0, 200),
     message: p.message.slice(0, 1800),
     level: p.level,
@@ -166,7 +145,6 @@ function toData(p: PushPayload): Record<string, string> {
   return d;
 }
 
-/** Sends one message. Returns "gone" when FCM says the token is dead (app uninstalled), so the caller can forget it. */
 async function sendOne(sa: ServiceAccount, auth: string, target: { token: string } | { topic: string }, data: Record<string, string>): Promise<"ok" | "gone" | "error"> {
   try {
     const res = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
@@ -176,7 +154,6 @@ async function sendOne(sa: ServiceAccount, auth: string, target: { token: string
         message: {
           ...target,
           data,
-          // "high" wakes a sleeping/closed app (Doze) right away; 1 h time-to-live: an alert that old is stale.
           android: { priority: "high", ttl: "3600s" },
         },
       }),
@@ -192,11 +169,6 @@ async function sendOne(sa: ServiceAccount, auth: string, target: { token: string
   }
 }
 
-/**
- * Push a notice to the phones. `niks` are the targeted citizens; a broadcast goes to the topic every
- * signed-in app subscribes to. Best-effort: never throws, because the notice is already stored and the
- * app's polling still delivers it when the phone is awake.
- */
 export async function pushNotice(payload: Omit<PushPayload, "to" | "id">, targets: { to: string; id: string }[]): Promise<{ sent: number; failed: number }> {
   const sa = serviceAccount();
   if (!sa || !targets.length) return { sent: 0, failed: 0 };
@@ -215,7 +187,6 @@ export async function pushNotice(payload: Omit<PushPayload, "to" | "id">, target
     const jobs: { nik: string; token: string; data: Record<string, string> }[] = [];
     for (const t of niks) for (const token of tokens.get(t.to) ?? []) jobs.push({ nik: t.to, token, data: toData({ ...payload, ...t }) });
     const dead: { nik: string; token: string }[] = [];
-    // Small worker pool: a few hundred citizens must not open a few hundred sockets at once.
     let next = 0;
     await Promise.all(
       Array.from({ length: Math.min(15, jobs.length) }, async () => {

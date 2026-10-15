@@ -6,11 +6,6 @@ import { sendNotices, type NoticeKind, type NoticeLevel } from "./citizenNotice"
 import { distanceKm, type ReportNoticeLog } from "./reportNotice";
 import { inScope, type Scope } from "./supportArea";
 
-/**
- * Server side of "notify citizens about a verified report", shared by the officer's
- * panel (/api/reports/notify) and the automatic AI + BMKG triage (lib/autoTriage.ts).
- * Sends are logged per report in `settings` under `report_notice:<report id>`.
- */
 
 const logKey = (id: string) => `report_notice:${id}`;
 
@@ -22,7 +17,6 @@ export async function loadNoticeLog(reportId: string): Promise<ReportNoticeLog[]
 
 export async function appendNoticeLog(reportId: string, entry: ReportNoticeLog): Promise<ReportNoticeLog[]> {
   const logs = [...(await loadNoticeLog(reportId)), entry];
-  // Logging is secondary: the notices are already out, so a failure here must not fail the send.
   await db()
     .from("settings")
     .upsert({ key: logKey(reportId), value: { logs }, updated_at: entry.sent_at }, { onConflict: "key" })
@@ -30,8 +24,6 @@ export async function appendNoticeLog(reportId: string, entry: ReportNoticeLog):
   return logs;
 }
 
-/** Active citizens with their last known GPS point and distance (km) to (lat,lng).
- *  With a province `scope` (restricted Support officer), only citizens whose last known area is inside it. */
 export async function citizensAround(lat: number, lng: number, scope: Scope = null) {
   const [{ data, error }, activity, profiles] = await Promise.all([
     db().from("citizens").select("nik,full_name,active").eq("active", true).limit(5000),
@@ -39,7 +31,6 @@ export async function citizensAround(lat: number, lng: number, scope: Scope = nu
     scope === null ? Promise.resolve({} as Awaited<ReturnType<typeof loadAllProfiles>>) : loadAllProfiles(),
   ]);
   if (error) throw new Error(error.message);
-  // A citizen's area = last GPS area, else the area of their profile address (same rule as the Users page).
   const provinceOf = (nik: string) => activity[nik]?.region?.province ?? profiles[nik]?.geo?.province ?? null;
   const active = (data ?? []).filter((c) => scope === null || inScope(scope, provinceOf(c.nik)));
   const located = active.flatMap((c) => {
@@ -63,15 +54,11 @@ export type SendPlan = {
   by_role?: string | null;
   auto?: boolean;
   note?: string;
-  /** Attach the report's photo to the phone notification. */
   photo_url?: string | null;
-  /** Leave this citizen out (the reporter does not need to be warned about their own report). */
   excludeNik?: string | null;
-  /** Restricted officer: "all" means every citizen in these provinces, nearby is limited to them too. */
   scopeProvinces?: Scope;
 };
 
-/** Send the notification for one report and log it. */
 export async function sendReportNotice(
   report: { id: string; lat: number; lng: number },
   plan: SendPlan,
@@ -82,7 +69,6 @@ export async function sendReportNotice(
   try {
     const around = await citizensAround(report.lat, report.lng, scope);
     if (plan.scope === "all") {
-      // Unrestricted: one broadcast row. Restricted: one row per citizen in the assigned provinces.
       targets = scope === null ? [{ to: "all", to_name: null }] : around.active.map((c) => ({ to: c.nik, to_name: c.full_name }));
       recipients = around.activeCount;
       if (!recipients) return { ok: false, error: "Belum ada warga aktif di wilayah tugas Anda.", status: 400 };

@@ -18,7 +18,6 @@ export default function Modal({
   const [leaving, setLeaving] = useState(false);
   const closedRef = useRef(false);
 
-  // Play the exit animation, then actually close.
   function requestClose() {
     if (closedRef.current) return;
     closedRef.current = true;
@@ -26,7 +25,6 @@ export default function Modal({
     window.setTimeout(onClose, 160);
   }
 
-  // Lock background scroll while open.
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";

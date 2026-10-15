@@ -45,8 +45,6 @@ class _ShellState extends State<Shell> {
         ],
       ),
       body: Stack(children: [
-        // All pages stay alive (like IndexedStack) but the switch fades + slides.
-        // TickerMode wraps only the page: wrapping the fade itself froze it, leaving the old page on top.
         for (var i = 0; i < pages.length; i++)
           IgnorePointer(
             ignoring: i != index,
@@ -109,8 +107,6 @@ class _ShellState extends State<Shell> {
   }
 }
 
-/// Bottom navigation with a sliding pill behind the active tab, a bouncy icon,
-/// and a press-down effect on every tab.
 class _AnimatedNavBar extends StatelessWidget {
   const _AnimatedNavBar({required this.index, required this.onTap, required this.items});
   final int index;
@@ -133,7 +129,6 @@ class _AnimatedNavBar extends StatelessWidget {
             final w = box.maxWidth / n;
             const pillW = 64.0, pillH = 34.0;
             return Stack(children: [
-              // Sliding pill
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 380),
                 curve: Curves.easeOutBack,
@@ -188,7 +183,6 @@ class _NavItemState extends State<_NavItem> {
             SizedBox(
               height: 34,
               child: Center(
-                // Icon pops when its tab becomes active.
                 child: TweenAnimationBuilder<double>(
                   key: ValueKey(sel),
                   tween: Tween(begin: sel ? .6 : 1, end: 1),

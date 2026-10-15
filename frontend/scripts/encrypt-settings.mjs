@@ -1,8 +1,3 @@
-// Encrypts existing plaintext citizen rows in the `settings` table (AES-256-GCM, same format as src/lib/crypto.ts).
-// Usage (from /frontend):   npm run encrypt-data -- --dry-run     (report only)
-//                           npm run encrypt-data                  (migrate)
-// Safe to re-run: rows that are already encrypted are skipped. Every row is verified by decrypting what was
-// written and comparing it to the original before it counts as migrated. No plaintext backup is written.
 import { readFileSync } from "node:fs";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -59,7 +54,6 @@ for (const prefix of ["citizen_profile:", "citizen_activity:"]) {
     } catch (err) {
       stats.failed++;
       console.error(`FAILED ${row.key.split(":")[0]}:***${row.key.slice(-4)} -> ${err.message}`);
-      // best effort: put the original plaintext back so the row is never left in a half-state
       await db.from("settings").upsert({ key: row.key, value: row.value, updated_at: new Date().toISOString() }, { onConflict: "key" });
     }
   }

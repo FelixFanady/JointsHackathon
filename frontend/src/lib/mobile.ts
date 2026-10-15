@@ -4,7 +4,6 @@ import { db } from "./supabase";
 
 export const NIK_RE = /^[0-9]{16}$/;
 
-// Best-effort in-memory limiter (per server instance). Enough to slow NIK guessing; not a hard guarantee on serverless.
 const hits = new Map<string, number[]>();
 export function rateLimit(req: Request, bucket: string, max: number, windowMs = 60_000): NextResponse | null {
   const ip = (req.headers.get("x-forwarded-for") ?? "local").split(",")[0].trim();
@@ -30,11 +29,6 @@ export async function findCitizen(nik: unknown) {
 
 export const INACTIVE_MSG = "Akun Anda dinonaktifkan oleh petugas. Hubungi petugas untuk mengaktifkannya kembali.";
 
-/**
- * Looks the citizen up and tells "not registered" (404) apart from "deactivated by an admin"
- * (403 + code "inactive") so the app can show the right message and sign the user out.
- * Every mobile endpoint that acts for a citizen goes through this.
- */
 export async function requireCitizen(
   nik: unknown,
   missingMsg = "NIK tidak terdaftar.",
@@ -56,7 +50,6 @@ export function coords(b: any): { lat: number; lng: number } | null {
 export const cleanText = (v: unknown, max: number) =>
   typeof v === "string" ? v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim().slice(0, max) : "";
 
-/** Mask phone numbers / emails in free text before it is stored (matches the privacy note in the app). */
 export function maskPii(s: string): string {
   return s
     .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, "[email disamarkan]")
@@ -66,7 +59,6 @@ export function maskPii(s: string): string {
 const BUCKET = "report-photos";
 let bucketReady = false;
 
-/** Accepts a base64 JPEG/PNG (<= ~2.5MB decoded), stores it, returns its public URL. */
 export async function storePhoto(b64: unknown): Promise<string | null | "invalid"> {
   if (b64 == null || b64 === "") return null;
   if (typeof b64 !== "string" || b64.length > 3_400_000) return "invalid";

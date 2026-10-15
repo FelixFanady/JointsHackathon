@@ -11,7 +11,6 @@ async function count(table: string, filter?: (q: any) => any) {
 }
 
 export default async function AdminHome() {
-  // One wave of parallel queries (the "recent" list used to wait for the counts = a second round-trip).
   const [total, pending, valid, falseN, citizens, support, { data: recent }] = await Promise.all([
     count("reports"),
     count("reports", (q) => q.eq("status", "pending")),

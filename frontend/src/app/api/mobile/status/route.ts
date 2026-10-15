@@ -7,7 +7,6 @@ import { reverseGeocode } from "@/lib/geo";
 
 export const dynamic = "force-dynamic";
 
-// Province per ~5 km grid cell, so the app's polling does not hit the street map every time.
 const cache = new Map<string, { province: string | null; at: number }>();
 const TTL = 6 * 3600_000;
 
@@ -24,11 +23,6 @@ async function provinceAt(lat: number, lng: number): Promise<string | null> {
   return province;
 }
 
-/**
- * Status Wilayah for the citizen app. Body: { nik, lat?, lng? }
- * -> { province, statuses: [...] } — active statuses for the whole country plus the province the phone is in.
- * Without a location only the country-wide statuses are returned.
- */
 export async function POST(req: Request) {
   const rl = rateLimit(req, "area-status", 40);
   if (rl) return rl;

@@ -16,7 +16,6 @@ const pinIcon = () =>
     html: '<div class="pick-pin"><span class="msym" style="font-size:22px">location_on</span></div>',
   });
 
-/** Click the map (or drag the pin) to choose a point. Leaflet touches `window`: load only via AddressPicker (ssr:false). */
 export default function AddressPickerMap({
   pin,
   fly,
@@ -61,7 +60,6 @@ export default function AddressPickerMap({
     });
     map.current = m;
     if (pin) place(pin);
-    // The map mounts inside an animating modal: re-measure once it has its real size.
     const t = window.setTimeout(() => m.invalidateSize(), 250);
     return () => {
       window.clearTimeout(t);
@@ -72,7 +70,6 @@ export default function AddressPickerMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Search result -> move the view there.
   useEffect(() => {
     if (fly && map.current) map.current.flyTo([fly.lat, fly.lng], 16, { duration: 0.6 });
   }, [fly]);

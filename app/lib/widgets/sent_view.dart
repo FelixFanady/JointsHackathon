@@ -3,14 +3,11 @@ import 'package:flutter/services.dart';
 
 import '../theme.dart';
 
-/// "Sent" confirmation used after BOTH an SOS and a citizen report, so they look the same:
-/// a large green check that pops in, a title, a short reassurance, the report ID, and a full-width "Selesai".
 class SentView extends StatelessWidget {
   const SentView({super.key, required this.title, required this.message, required this.onDone, this.code});
   final String title;
   final String message;
   final VoidCallback onDone;
-  /// Report ID ("LW-…" / "SOS-…"); hidden when the server did not return one.
   final String? code;
 
   @override
@@ -50,7 +47,6 @@ class SentView extends StatelessWidget {
   }
 }
 
-/// "ID Laporan  LW-1A2B3C4D  [Salin]" — the same ID Support and Admin see in the dashboard.
 class ReportIdBox extends StatefulWidget {
   const ReportIdBox({super.key, required this.code});
   final String code;

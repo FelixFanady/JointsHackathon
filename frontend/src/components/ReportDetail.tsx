@@ -21,7 +21,7 @@ export default function ReportDetail({ report, onChanged, onClose }: { report: R
     else onChanged();
   }
 
-  const vs = viewStatus(report); // "review" = validated by AI + BMKG, waiting for a human check
+  const vs = viewStatus(report);
   const mapsUrl = `https://www.openstreetmap.org/?mlat=${report.lat}&mlon=${report.lng}#map=17/${report.lat}/${report.lng}`;
 
   return (
@@ -35,7 +35,6 @@ export default function ReportDetail({ report, onChanged, onClose }: { report: R
       </div>
       <h2 style={{ fontSize: 20 }}>{report.category}</h2>
       <CopyId code={reportCode(report)} />
-      {/* Two columns on wide screens: report + AI + decision on the left, alerting on the right. */}
       <div className={`detail-cols${report.status === "valid" ? " has-side" : ""}`}>
       <div className="col-main">
       {report.photo_url && (

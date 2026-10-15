@@ -8,11 +8,6 @@ import { scopeFor } from "@/lib/supportArea";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/**
- * Officer's "AI Insight" button: AI verdict for one or more reports (BMKG + news as reference).
- * When the AI is busy, the check is put in the AI queue (retried automatically) and the answer is
- * { queued: true }; the console shows "AI dalam antrean" and the verdict appears when it is done.
- */
 export async function POST(req: Request) {
   const g = await guard(["admin", "support"]);
   if (g.error) return g.error;
@@ -35,7 +30,6 @@ export async function POST(req: Request) {
   const res = await verifyReports(list);
   if (res.ok) return NextResponse.json({ verdict: res.value.verdict });
   if (res.status >= 500 && res.status !== 503) {
-    // All free models busy / unreachable: queue it instead of failing (503 = no AI key configured).
     await enqueue(list[0], "verify", list);
     after(() => kickQueue());
     return NextResponse.json({ queued: true, running: true }, { status: 202 });

@@ -1,14 +1,7 @@
 import "server-only";
 import { sendReportNotice } from "./reportNoticeServer";
 
-/**
- * Instant crime alert: for street crimes where minutes matter (penjambretan), citizens near the
- * reported spot are warned right away, WITHOUT waiting for an officer. The alert says plainly that
- * the report is not verified yet, and carries the reporter's photo when there is one.
- * Logged on the report like any other alert (settings `report_notice:<id>`, auto = true).
- */
 
-/** Categories that alert nearby citizens immediately. Add e.g. "Perampokan" here to extend it. */
 export const INSTANT_ALERT_CATEGORIES = ["Penjambretan"];
 export const INSTANT_ALERT_RADIUS_KM = 2;
 export const INSTANT_ALERT_SENDER = "SiagaKu (peringatan otomatis)";

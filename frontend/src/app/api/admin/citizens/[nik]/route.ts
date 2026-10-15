@@ -13,7 +13,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (!/^\d{16}$/.test(nik)) return NextResponse.json({ error: "NIK tidak valid." }, { status: 400 });
   const b = await req.json().catch(() => null);
 
-  // --- Base columns that really exist on `citizens` ---
   const patch: { full_name?: string; active?: boolean } = {};
   if (typeof b?.full_name === "string") {
     const n = b.full_name.trim().replace(/\s+/g, " ");
@@ -22,7 +21,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
   if (typeof b?.active === "boolean") patch.active = b.active;
 
-  // --- Profile fields: validated, then stored in the settings-backed store ---
   const profile: CitizenProfile = {};
   let hasProfile = false;
   if ("email" in (b ?? {})) {
@@ -52,7 +50,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const v = b.photo;
     if (v === null || v === "") {
       profile.photo = null;
-      profile.face = null; // no photo -> the citizen must enrol their face again in the app
+      profile.face = null;
     } else if (typeof v === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(v)) {
       if (v.length > 360000) return NextResponse.json({ error: "Foto terlalu besar. Coba foto lain." }, { status: 400 });
       profile.photo = v;
@@ -72,8 +70,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (hasProfile) {
-    // Profile data is encrypted (lib/crypto.ts). Without the right key the save cannot run at all;
-    // say so plainly instead of a raw 500.
     let err: string | null;
     try {
       err = await saveProfile(nik, profile);
@@ -90,8 +86,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
       );
     }
     if (err) return NextResponse.json({ error: err }, { status: 500 });
-    // Address changed -> work out its district/city on the street map (best-effort, after responding).
-    // A map pin from the picker is exact; otherwise the text is geocoded.
     if ("address" in profile) {
       const lat = Number(b?.pin?.lat);
       const lng = Number(b?.pin?.lng);
@@ -109,7 +103,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   if (!/^\d{16}$/.test(nik)) return NextResponse.json({ error: "NIK tidak valid." }, { status: 400 });
   const { error } = await db().from("citizens").delete().eq("nik", nik);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  await deleteProfile(nik); // best-effort cleanup of the profile row
-  await deleteActivity(nik); // and the activity row
+  await deleteProfile(nik);
+  await deleteActivity(nik);
   return NextResponse.json({ ok: true });
 }

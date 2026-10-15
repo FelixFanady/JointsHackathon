@@ -6,7 +6,6 @@ import { cleanAreas, deleteAreas, saveAreas } from "@/lib/supportArea";
 type Ctx = { params: Promise<{ id: string }> };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Only support accounts are manageable here; admin accounts are never touched. */
 async function loadSupport(id: string) {
   if (!UUID.test(id)) return null;
   const { data } = await db().from("profiles").select("id,role").eq("id", id).eq("role", "support").maybeSingle();
@@ -34,13 +33,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const { error } = await db().auth.admin.updateUserById(id, { password: b.password });
     if (error) return NextResponse.json({ error: "Gagal mengganti kata sandi." }, { status: 500 });
   }
-  // Assigned provinces (38 + "ALL"). An empty list = sees no reports until assigned.
-  if (Array.isArray(b?.areas)) {
-    if (b.areas.length > 0 && cleanAreas(b.areas).length === 0) return NextResponse.json({ error: "Wilayah tidak valid." }, { status: 400 });
-    const err = await saveAreas(id, b.areas);
-    if (err) return NextResponse.json({ error: err }, { status: 500 });
-  }
-  // Assigned provinces (38 + "ALL"). An empty list = sees no reports until assigned.
   if (Array.isArray(b?.areas)) {
     if (b.areas.length > 0 && cleanAreas(b.areas).length === 0) return NextResponse.json({ error: "Wilayah tidak valid." }, { status: 400 });
     const err = await saveAreas(id, b.areas);

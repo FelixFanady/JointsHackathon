@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useNavStart } from "./NavPending";
+import { useNavStart, usePendingPath } from "./NavPending";
 
-/** A link, or a collapsible group (dropdown) when it has `children`. */
 export type NavItem = { href: string; label: string; icon: string; children?: NavItem[] };
+export type NavEntry = NavItem | { section: string };
 
 type Nav = ReturnType<typeof useNavStart>;
 
@@ -19,7 +19,6 @@ function NavLink({ it, active, nav, sub = false }: { it: NavItem; active: boolea
   );
 }
 
-/** Dropdown group: opens by itself while one of its pages is shown. The longest matching child is active. */
 function NavGroup({ item, path, nav }: { item: NavItem; path: string; nav: Nav }) {
   const kids = item.children ?? [];
   const match = kids
@@ -49,10 +48,11 @@ export default function Sidebar({
   user,
 }: {
   title: string;
-  items: NavItem[];
+  items: NavEntry[];
   user: { full_name: string; role: string; unit: string | null };
 }) {
-  const path = usePathname();
+  const current = usePathname();
+  const path = usePendingPath() ?? current;
   const router = useRouter();
   const nav = useNavStart();
   const initials = user.full_name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
@@ -74,7 +74,9 @@ export default function Sidebar({
       </div>
       <nav aria-label="Navigasi utama">
         {items.map((it) =>
-          it.children?.length ? (
+          "section" in it ? (
+            <div key={`s:${it.section}`} className="nav-section" role="presentation">{it.section}</div>
+          ) : it.children?.length ? (
             <NavGroup key={it.label} item={it} path={path} nav={nav} />
           ) : (
             <NavLink key={it.href} it={it} active={it.href === "/admin" ? path === "/admin" : path.startsWith(it.href)} nav={nav} />

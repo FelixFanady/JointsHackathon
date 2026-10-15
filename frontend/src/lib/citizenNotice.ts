@@ -2,40 +2,31 @@ import "server-only";
 import { db } from "./supabase";
 import { pushNotice } from "./push";
 
-/**
- * Notifications from Support to citizens, stored WITHOUT new tables: one row per
- * notice in the existing `settings` (key text, value jsonb) table, keyed
- *   notice:<nik | all>:<epoch-ms>-<rand>
- * `all` is a broadcast. Keys sort by time, so a prefix query + order gives the newest.
- */
 
 export type NoticeLevel = "info" | "warning" | "danger";
-/** Decides the sound in the app: bencana = 30 s disaster siren, kriminal = police siren once, umum = normal sound. */
 export type NoticeKind = "bencana" | "kriminal" | "umum";
 export const noticeKind = (v: unknown): NoticeKind => (v === "bencana" || v === "kriminal" ? v : "umum");
 
 export type Notice = {
-  id: string; // full settings key
-  to: string; // "all" or a NIK
+  id: string;
+  to: string;
   to_name: string | null;
   title: string;
   message: string;
   level: NoticeLevel;
-  kind?: NoticeKind; // missing on notices sent before this field existed
+  kind?: NoticeKind;
   created_at: string;
-  by: string; // sender display name
-  // Audit (notices sent before these existed don't have them):
-  batch?: string; // one id per send, shared by every recipient row of that send
-  by_id?: string | null; // sender's profile id (null = the automatic AI + BMKG triage)
+  by: string;
+  batch?: string;
+  by_id?: string | null;
   by_username?: string | null;
   by_role?: string | null;
-  target_label?: string; // who it went to, in words ("Semua warga", "Kota Bandung", "Radius 5 km dari laporan")
-  source?: "manual" | "report" | "auto"; // Notifikasi page | report panel | automatic AI alert
-  report_id?: string; // the report this alert is about
-  photo_url?: string; // the reporter's photo, shown in the phone notification (instant crime alerts)
+  target_label?: string;
+  source?: "manual" | "report" | "auto";
+  report_id?: string;
+  photo_url?: string;
 };
 
-/** Who sent it, recorded on every row for the notification log. */
 export type NoticeSender = { by: string; by_id?: string | null; by_username?: string | null; by_role?: string | null };
 
 const PREFIX = "notice:";
@@ -76,8 +67,6 @@ export async function sendNotices(
     const { error } = await db().from("settings").upsert(rows.slice(i, i + 500), { onConflict: "key" });
     if (error) return error.message;
   }
-  // The notice is stored (the app's polling will find it). Also push it so a phone with the app
-  // closed gets it right away. Best-effort and a no-op until FIREBASE_SERVICE_ACCOUNT is set.
   await pushNotice(
     {
       title: n.title,
@@ -96,7 +85,6 @@ export async function sendNotices(
 type Row = { key: string; value: unknown };
 const toNotice = (r: Row): Notice => ({ ...(r.value as Omit<Notice, "id">), id: r.key });
 
-/** Newest notices for one citizen: their own plus broadcasts. */
 export async function noticesFor(nik: string, limit = 30): Promise<Notice[]> {
   const q = (p: string) =>
     db().from("settings").select("key,value").like("key", `${PREFIX}${p}:%`).order("key", { ascending: false }).limit(limit);
@@ -107,7 +95,6 @@ export async function noticesFor(nik: string, limit = 30): Promise<Notice[]> {
     .slice(0, limit);
 }
 
-/** Newest notices overall (Support history). */
 export async function recentNotices(limit = 30): Promise<Notice[]> {
   const { data } = await db().from("settings").select("key,value").like("key", `${PREFIX}%`).order("updated_at", { ascending: false }).limit(limit);
   return (data ?? []).map(toNotice).sort((x, y) => +new Date(y.created_at) - +new Date(x.created_at));

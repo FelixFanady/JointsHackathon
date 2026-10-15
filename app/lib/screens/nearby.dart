@@ -8,8 +8,6 @@ import '../theme.dart';
 import 'report_detail_sheet.dart';
 import '../widgets/area_status_banner.dart';
 
-/// "Sekitar Saya" tab: reports and SOS alerts near the citizen, shown big and detailed
-/// (mini map, address, distance, status) so most of it is readable without opening anything.
 class NearbyScreen extends StatefulWidget {
   const NearbyScreen({super.key});
   @override
@@ -25,7 +23,7 @@ class _NearbyScreenState extends State<NearbyScreen> with WidgetsBindingObserver
   String? error;
   List<NearbyItem>? items;
   double radius = 5;
-  String filter = 'all'; // all | report | sos
+  String filter = 'all';
   bool byDistance = true;
 
   @override
@@ -34,7 +32,6 @@ class _NearbyScreenState extends State<NearbyScreen> with WidgetsBindingObserver
     _load();
   }
 
-  // Silent refresh (every 20 s while visible, and right after a new SOS/report).
   @override
   Future<void> autoRefresh() async {
     final p = await recentPlace();
@@ -245,7 +242,6 @@ class _NearbyScreenState extends State<NearbyScreen> with WidgetsBindingObserver
       );
 }
 
-/// One nearby report/SOS: mini map on top, then category, status, address, distance and verification.
 class _NearbyCard extends StatelessWidget {
   const _NearbyCard({required this.item});
   final NearbyItem item;

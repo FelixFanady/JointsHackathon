@@ -1,0 +1,18 @@
+{$CV_DOMAIN} {
+	encode gzip
+	request_body {
+		max_size 8MB
+	}
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+	}
+	@allowed path /health /v1/enroll /v1/compare
+	handle @allowed {
+		reverse_proxy cv:8100
+	}
+	handle {
+		respond 404
+	}
+}

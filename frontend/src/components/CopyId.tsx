@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-/** Report ID chip with a copy button ("ID Laporan LW-1A2B3C4D  ⧉"). */
 export default function CopyId({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
@@ -11,7 +10,6 @@ export default function CopyId({ code }: { code: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
-      /* clipboard blocked: the ID is still selectable text */
     }
   }
   return (

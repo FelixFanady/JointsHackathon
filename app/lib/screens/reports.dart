@@ -18,8 +18,6 @@ class ReportsScreen extends StatefulWidget {
   State<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-/// "Lapor" tab: a big "Buat Laporan" card on top, then the citizen's own reports.
-/// Reports near the citizen live on their own tab (screens/nearby.dart).
 class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserver, AutoRefresh {
   List<MyReport>? mine;
   String? error;
@@ -30,7 +28,6 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
     _load();
   }
 
-  // Silent refresh (every 20 s while visible, and right after a new SOS/report): no error reset, no spinner.
   @override
   Future<void> autoRefresh() async {
     final nik = session.nik;
@@ -85,7 +82,6 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
     );
   }
 
-  /// Big blue card that starts a new report.
   Widget _createHero() {
     const examples = [Icons.flood, Icons.local_fire_department_outlined, Icons.vibration, Icons.lock_open];
     return Material(
@@ -200,7 +196,6 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
   void _detail(MyReport r) => showReportDetail(context, r);
 }
 
-/// Buat Laporan: 1 Jenis -> 2 Penjelasan -> 3 Foto -> 4 Konfirmasi.
 class CreateReportScreen extends StatefulWidget {
   const CreateReportScreen({super.key});
   @override
@@ -263,8 +258,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         description: desc.text.trim(), danger: danger ?? false, photoB64: photoB64,
       );
       if (!mounted) return;
-      // Same "sent" screen as after an SOS (widgets/sent_view.dart). Replacing this form means
-      // "Selesai" returns straight to the reports list, which receives `true` and refreshes.
       Navigator.of(context).pushReplacement<void, bool>(
         MaterialPageRoute(
           builder: (ctx) => Scaffold(
@@ -425,10 +418,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   Widget _confirmStep() {
     final cat = category ?? '-';
     final isDanger = danger == true;
-    var i = 0; // stagger index for the entrance animation
+    var i = 0;
     Widget reveal(Widget w) => _Reveal(index: i++, child: w);
     return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 16), children: [
-      // Hero: summary banner with completeness checklist
       reveal(_heroSummary(cat, isDanger)),
       const SizedBox(height: 14),
       reveal(Row(children: [
@@ -438,7 +430,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       ])),
       const SizedBox(height: 10),
 
-      // Description
       reveal(_ConfirmSection(
         title: 'Penjelasan',
         icon: Icons.notes_rounded,
@@ -455,7 +446,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         ),
       )),
 
-      // Location with a small map preview
       reveal(_ConfirmSection(
         title: 'Lokasi Kejadian',
         icon: Icons.location_on_outlined,
@@ -496,7 +486,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               ]),
       )),
 
-      // Photo
       reveal(_ConfirmSection(
         title: 'Foto Bukti',
         icon: Icons.photo_camera_outlined,
@@ -526,7 +515,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               ),
       )),
 
-      // Reporter + privacy
       reveal(_ConfirmSection(
         title: 'Pelapor',
         icon: Icons.person_outline,
@@ -556,7 +544,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               const Icon(Icons.lock_outline, size: 16, color: C.primary),
               const SizedBox(width: 8),
               Expanded(
-                // Instant crime alerts share the photo with nearby citizens: say so before sending.
                 child: Text(
                     category == 'Penjambretan'
                         ? 'Nama dan NIK hanya terlihat oleh petugas. Untuk penjambretan, warga dalam radius 2 km langsung diberi peringatan berisi jenis kejadian, perkiraan lokasi, dan foto Anda (jika ada).'
@@ -581,10 +568,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     ]);
   }
 
-  /// Blue gradient banner: what is being reported + a 4-item readiness checklist.
   Widget _heroSummary(String cat, bool isDanger) {
     final checks = <(String, bool, bool)>[
-      // (label, done, optional)
       ('Jenis', category != null, false),
       ('Penjelasan', desc.text.trim().length >= 10, false),
       ('Lokasi', place != null, false),
@@ -599,7 +584,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .3), blurRadius: 24, offset: const Offset(0, 10))],
       ),
       child: Stack(clipBehavior: Clip.none, children: [
-        // Decorative soft circles
         Positioned(right: -30, top: -40, child: _blob(120, .10)),
         Positioned(right: 40, bottom: -50, child: _blob(80, .07)),
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -686,7 +670,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       );
 }
 
-/// Red map pin with a soft pulsing ring (static when animations are disabled).
 class _PulsePin extends StatefulWidget {
   const _PulsePin();
   @override
@@ -728,7 +711,6 @@ class _PulsePinState extends State<_PulsePin> with SingleTickerProviderStateMixi
       );
 }
 
-/// Staggered fade + slide-up when the confirmation step opens.
 class _Reveal extends StatelessWidget {
   const _Reveal({required this.index, required this.child});
   final int index;
@@ -747,7 +729,6 @@ class _Reveal extends StatelessWidget {
   }
 }
 
-/// White card used on the confirmation step: optional title row with icon and an "Ubah" link.
 class _ConfirmSection extends StatelessWidget {
   const _ConfirmSection({required this.child, this.title, this.icon, this.onEdit, this.editLabel = 'Ubah', this.trailing});
   final Widget child;

@@ -8,16 +8,6 @@ import {
 
 export const dynamic = "force-dynamic";
 
-/**
- * Live selfie vs the citizen's reference photo (the profile photo on the website).
- * The reference is decrypted here, sent only to the internal CV service, and never returned.
- *
- * Body:  { nik, photo: base64 JPEG }
- * 200:   { match: boolean, confidence: 0..1, token?, expires_at? }   (token only when match)
- * 409:   { code: "not_registered" | "reference_unusable" }
- * 422:   { code: <quality reason> }  -- bad selfie, not counted as a failed attempt
- * 429:   { code: "face_locked" }     -- 5 non-matches in 15 min for this NIK
- */
 export async function POST(req: Request) {
   const rl = rateLimit(req, "face-verify", 10);
   if (rl) return rl;

@@ -4,12 +4,6 @@ import { registerToken, unregisterToken, validToken } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
-/**
- * The app tells the server which phone (FCM registration token) belongs to the signed-in citizen, so
- * notices can reach it while the app is closed. Called on sign-in, whenever Firebase rotates the token,
- * and on sign-out (action "unregister") so a phone handed to someone else stops receiving the old account's notices.
- * Body: { nik, token, action?: "register" | "unregister" } -> { ok: true }
- */
 export async function POST(req: Request) {
   const rl = rateLimit(req, "push-token", 20);
   if (rl) return rl;
