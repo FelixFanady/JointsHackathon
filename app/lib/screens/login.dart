@@ -58,7 +58,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 Container(
                   width: 80, height: 80,
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: shadowMd),
-                  child: const Icon(Icons.shield, size: 44, color: C.primary),
+                  padding: const EdgeInsets.all(14),
+                  child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
                 ),
                 const SizedBox(height: 20),
                 const Text('Selamat Datang', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, letterSpacing: -.6, color: C.primaryDark)),
@@ -205,10 +206,10 @@ class ConfirmIdentityScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(99), boxShadow: shadowSm),
-              child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.shield, size: 14, color: C.primary),
-                SizedBox(width: 6),
-                Text('SIAGAKU KEPENDUDUKAN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: .6, color: C.muted)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Image.asset('assets/images/logo.png', width: 14, height: 14),
+                const SizedBox(width: 6),
+                const Text('SIAGAKU KEPENDUDUKAN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: .6, color: C.muted)),
               ]),
             ),
             const SizedBox(height: 20),

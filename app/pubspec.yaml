@@ -20,8 +20,6 @@ dependencies:
   flutter_local_notifications: 17.2.4
   camera: 0.12.1
   google_mlkit_face_detection: 0.15.1
-  # Push while the app is closed (FCM). Needs android/app/google-services.json; without it the app
-  # still works and keeps polling.
   firebase_core: 4.15.0
   firebase_messaging: 16.7.0
 
@@ -34,3 +32,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/sounds/
+    - assets/images/

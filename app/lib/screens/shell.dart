@@ -33,8 +33,9 @@ class _ShellState extends State<Shell> {
         title: Row(children: [
           Container(
             width: 36, height: 36,
-            decoration: BoxDecoration(color: C.primaryDark, borderRadius: BorderRadius.circular(12)),
-            child: const Icon(Icons.shield, size: 20, color: Colors.white),
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: C.outline)),
+            child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
           ),
           const SizedBox(width: 12),
           Text(['Beranda', 'Laporan', 'Sekitar', 'Peta'][index]),

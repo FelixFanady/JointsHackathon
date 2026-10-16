@@ -3,3 +3,6 @@
 .env
 .env.local
 *.env
+joints-3c97b-firebase-adminsdk-fbsvc-23d815e8f0.json
+*firebase-adminsdk*.json
+serviceAccountKey*.json

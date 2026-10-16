@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "525780517753",
+    "project_id": "joints-3c97b",
+    "storage_bucket": "joints-3c97b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:525780517753:android:fc9307bef47d2e0bd5a5a8",
+        "android_client_info": {
+          "package_name": "com.example.siagaku"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDR69YgpxgIckyTyuu3CQDqc00JBmuUCSw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

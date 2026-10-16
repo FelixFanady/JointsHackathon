@@ -1,3 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Notification sirens are referenced by name from Dart, so stop resource shrinking from removing them. -->
-<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@raw/siren_disaster,@raw/siren_police" />
+<!-- Notification sirens and the status-bar icon are referenced by name from Dart, so stop resource shrinking from removing them. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@raw/siren_disaster,@raw/siren_police,@drawable/ic_stat_siagaku" />
