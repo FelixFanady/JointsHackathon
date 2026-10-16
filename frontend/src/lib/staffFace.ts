@@ -3,6 +3,7 @@ import { createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { db } from "./supabase";
 import { open, seal } from "./crypto";
+import { isBypassed } from "./faceBypass";
 import type { Profile } from "./types";
 
 export const STAFF_FACE_COOKIE = "sa_face";
@@ -36,14 +37,14 @@ function tokenKey(): Buffer {
 
 const sign = (scope: string, userId: string, exp: number) => createHmac("sha256", tokenKey()).update(`${scope}.${userId}.${exp}`).digest("base64url");
 
-function issueToken(scope: "sf1" | "su1", userId: string, ttl: number): string {
+function issueToken(scope: "sf1" | "su1" | "sb1", userId: string, ttl: number): string {
   const exp = Math.floor(Date.now() / 1000) + ttl;
   return `${scope}.${exp}.${sign(scope, userId, exp)}`;
 }
 
-function checkToken(scope: "sf1" | "su1", userId: string, token: string | undefined): boolean {
+function checkToken(scope: "sf1" | "su1" | "sb1", userId: string, token: string | undefined): boolean {
   if (!token) return false;
-  const m = /^(sf1|su1)\.(\d{10})\.([A-Za-z0-9_-]{43})$/.exec(token);
+  const m = /^(sf1|su1|sb1)\.(\d{10})\.([A-Za-z0-9_-]{43})$/.exec(token);
   if (!m || m[1] !== scope) return false;
   const exp = Number(m[2]);
   if (exp * 1000 < Date.now()) return false;
@@ -53,25 +54,28 @@ function checkToken(scope: "sf1" | "su1", userId: string, token: string | undefi
 }
 
 export const issueStaffFaceToken = (userId: string) => issueToken("sf1", userId, STAFF_FACE_TTL_S);
+export const issueBypassToken = (userId: string) => issueToken("sb1", userId, STAFF_FACE_TTL_S);
 export const checkStaffFaceToken = (userId: string, token: string | undefined) => checkToken("sf1", userId, token);
 export const issueStepUpToken = (userId: string) => issueToken("su1", userId, STAFF_STEPUP_TTL_S);
 
 export async function staffFaceVerified(user: Pick<Profile, "id" | "username">): Promise<boolean> {
   if (!needsStaffFace(user)) return true;
   try {
-    return checkStaffFaceToken(user.id, (await cookies()).get(STAFF_FACE_COOKIE)?.value);
+    if (checkStaffFaceToken(user.id, (await cookies()).get(STAFF_FACE_COOKIE)?.value)) return true;
   } catch {
     return false;
   }
+  return isBypassed("staff", user.id);
 }
 
 export async function staffStepUpVerified(user: Pick<Profile, "id" | "username">): Promise<boolean> {
   if (!needsStaffFace(user)) return true;
   try {
-    return checkToken("su1", user.id, (await cookies()).get(STAFF_STEPUP_COOKIE)?.value);
+    if (checkToken("su1", user.id, (await cookies()).get(STAFF_STEPUP_COOKIE)?.value)) return true;
   } catch {
     return false;
   }
+  return isBypassed("staff", user.id);
 }
 
 export async function loadStaffFace(userId: string): Promise<StaffFace | null> {

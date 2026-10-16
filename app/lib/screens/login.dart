@@ -38,6 +38,11 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final who = await Api.identify(nik);
       if (!mounted) return;
+      if (who.bypassToken != null) {
+        await session.signIn(nik, who.name, faceToken: who.bypassToken);
+        if (mounted) setState(() => loading = false);
+        return;
+      }
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ConfirmIdentityScreen(nik: nik, name: who.name, faceRegistered: who.faceRegistered)));
     } on ApiException catch (e) {
       error = e.message;

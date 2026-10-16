@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { loadStaffFace, staffFaceVerified, staffLockId } from "@/lib/staffFace";
 import { lockedMinutes } from "@/lib/face";
+import { isBypassed } from "@/lib/faceBypass";
 import VerifyFaceClient from "./VerifyFaceClient";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export const metadata = { title: "Verifikasi Wajah — SiagaKu Pusat Operasi" };
 export default async function VerifyFacePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  if (await isBypassed("staff", user.id)) redirect("/api/staff/face/bypass");
   if (await staffFaceVerified(user)) redirect(user.role === "admin" ? "/admin" : "/support/reports");
 
   let registered = false;

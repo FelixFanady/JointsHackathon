@@ -29,7 +29,6 @@ export const ADMIN_NAV: NavEntry[] = [
 
   { section: "Tim & Akses" },
   { href: "/admin/users", label: "Users", icon: "shield" },
-  { href: "/admin/support", label: "Akun Support", icon: "support_agent" },
   { href: "/admin/performance", label: "Performa Support", icon: "monitoring" },
   { href: "/admin/login-logs/staff", label: "Login Logs Staf", icon: "vpn_key" },
 

@@ -10,7 +10,7 @@ const ROUTES: [prefix: string, meta: RouteMeta][] = [
   ["/support/map", { variant: "map" }],
   ["/support/users", { eyebrow: "Konsol Support", title: "Semua Pengguna", variant: "table" }],
   ["/admin/citizens", { eyebrow: "Admin Panel", title: "Pengguna (NIK)", variant: "table" }],
-  ["/admin/support", { eyebrow: "Admin Panel", title: "Akun Support", variant: "table" }],
+  ["/admin/users", { eyebrow: "Admin Panel", title: "Users", variant: "table" }],
   ["/admin/performance", { eyebrow: "Admin Panel", title: "Performa Support", variant: "stats" }],
   ["/admin/settings", { eyebrow: "Admin Panel", title: "Pengaturan", variant: "form" }],
   ["/admin", { eyebrow: "Admin Panel", title: "Ringkasan", variant: "stats" }],

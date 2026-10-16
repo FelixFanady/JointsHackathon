@@ -1,42 +1,5 @@
-import { db } from "@/lib/supabase";
-import { loadAllAreas } from "@/lib/supportArea";
-import { ALL_AREAS } from "@/lib/provinces";
-import { lockedNiks } from "@/lib/face";
-import { staffFaceIndex, staffLockId } from "@/lib/staffFace";
-import type { Profile } from "@/lib/types";
-import SupportClient from "./SupportClient";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-export const metadata = { title: "Akun Support — SiagaKu Admin" };
-
-export default async function SupportPage() {
-  const [{ data }, areas, faces, locks] = await Promise.all([
-    db()
-      .from("profiles")
-      .select("id,username,full_name,role,unit,active,created_at")
-      .eq("role", "support")
-      .order("created_at", { ascending: false }),
-    loadAllAreas(),
-    staffFaceIndex(),
-    lockedNiks(),
-  ]);
-  const rows = ((data ?? []) as Profile[]).map((p) => ({
-    ...p,
-    areas: areas[p.id] ?? [ALL_AREAS],
-    face_at: faces[p.id] || null,
-    face_locked: locks[staffLockId(p.id)] ?? 0,
-  }));
-
-  return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <div className="eyebrow">Admin Panel</div>
-          <h1>Akun Support</h1>
-          <p>Buat kredensial untuk petugas yang akan login di web. Petugas tidak bisa mendaftar sendiri.</p>
-        </div>
-      </div>
-      <SupportClient initial={rows} />
-    </div>
-  );
+export default function SupportRedirect() {
+  redirect("/admin/users");
 }

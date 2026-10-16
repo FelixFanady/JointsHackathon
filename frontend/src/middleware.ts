@@ -29,7 +29,7 @@ function faceExempt(jwt: string): boolean {
 }
 
 function faceFresh(req: NextRequest): boolean {
-  const m = /^sf1\.(\d{10})\./.exec(req.cookies.get(FACE)?.value ?? "");
+  const m = /^(?:sf1|sb1)\.(\d{10})\./.exec(req.cookies.get(FACE)?.value ?? "");
   return !!m && Number(m[1]) * 1000 > Date.now();
 }
 

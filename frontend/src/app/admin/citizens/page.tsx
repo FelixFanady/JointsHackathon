@@ -1,6 +1,9 @@
 import { db, fetchAll } from "@/lib/supabase";
 import { loadAllProfiles } from "@/lib/citizenProfile";
 import { lockedNiks } from "@/lib/face";
+import { getCurrentUser } from "@/lib/session";
+import { isSuperAdmin } from "@/lib/superAdmin";
+import { bypassEnabled, bypassIds } from "@/lib/faceBypass";
 import type { Citizen } from "@/lib/types";
 import CitizensClient from "./CitizensClient";
 
@@ -14,7 +17,14 @@ export default async function CitizensPage() {
   );
   const allProfilesPromise = loadAllProfiles();
 
-  const [{ data }, profiles, locks] = await Promise.all([basePromise, allProfilesPromise, lockedNiks().catch((): Record<string, number> => ({}))]);
+  const [{ data }, profiles, locks, me, bypassed] = await Promise.all([
+    basePromise,
+    allProfilesPromise,
+    lockedNiks().catch((): Record<string, number> => ({})),
+    getCurrentUser(),
+    bypassIds("citizen").catch(() => new Set<string>()),
+  ]);
+  const meSuper = !!me && (await isSuperAdmin(me));
   const base = data;
   const rows: Citizen[] = base.map((c) => ({ ...c, ...(profiles[c.nik] ?? {}) }));
 
@@ -27,7 +37,7 @@ export default async function CitizensPage() {
           <p>Daftar NIK dan nama yang dipakai aplikasi mobile untuk login dan mengisi otomatis laporan warga.</p>
         </div>
       </div>
-      <CitizensClient initial={rows} locks={locks} />
+      <CitizensClient initial={rows} locks={locks} meSuper={meSuper} bypassed={bypassEnabled() ? [...bypassed] : []} />
     </div>
   );
 }

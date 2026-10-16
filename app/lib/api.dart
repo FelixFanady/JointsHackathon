@@ -27,9 +27,10 @@ class ApiException implements Exception {
 }
 
 class Identity {
-  const Identity(this.name, this.faceRegistered);
+  const Identity(this.name, this.faceRegistered, {this.bypassToken});
   final String name;
   final bool faceRegistered;
+  final String? bypassToken;
 }
 
 class FaceResult {
@@ -149,7 +150,11 @@ class Api {
 
   static Future<Identity> identify(String nik) async {
     final j = await _post('/api/mobile/identify', {'nik': nik});
-    return Identity(j['name'] as String, j['face_registered'] == true);
+    return Identity(
+      j['name'] as String,
+      j['face_registered'] == true,
+      bypassToken: j['face_bypass'] == true ? j['token'] as String? : null,
+    );
   }
 
   static Future<FaceResult> faceVerify(String nik, String photoB64) async =>

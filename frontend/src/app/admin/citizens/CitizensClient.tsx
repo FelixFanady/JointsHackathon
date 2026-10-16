@@ -44,8 +44,21 @@ function formatBirth(ymd: string): string {
   return age >= 0 && age < 130 ? `${label} (${age} th)` : label;
 }
 
-export default function CitizensClient({ initial, locks = {} }: { initial: Citizen[]; locks?: Record<string, number> }) {
+export default function CitizensClient({
+  initial,
+  locks = {},
+  meSuper = false,
+  bypassed = [],
+}: {
+  initial: Citizen[];
+  locks?: Record<string, number>;
+  meSuper?: boolean;
+  bypassed?: string[];
+}) {
   const router = useRouter();
+  const [bypassing, setBypassing] = useState<Citizen | null>(null);
+  const [bypassPw, setBypassPw] = useState("");
+  const bypassSet = useMemo(() => new Set(bypassed), [bypassed]);
   const [q, setQ] = useState("");
   const [onlyLocked, setOnlyLocked] = useState(false);
   const [unlocking, setUnlocking] = useState<Citizen | null>(null);
@@ -168,6 +181,24 @@ export default function CitizensClient({ initial, locks = {} }: { initial: Citiz
     router.refresh();
   }
 
+  async function submitBypass(e: React.FormEvent) {
+    e.preventDefault();
+    if (!bypassing) return;
+    const c = bypassing;
+    const next = !bypassSet.has(c.nik);
+    setBusy(true);
+    setError("");
+    const err = await call(`/api/admin/citizens/${c.nik}/bypass`, "POST", { bypass: next, confirm_password: bypassPw });
+    setBusy(false);
+    if (err) {
+      setBypassPw("");
+      return setError(err);
+    }
+    setBypassing(null);
+    flash(next ? `Bypass verifikasi wajah ${c.full_name} diaktifkan.` : `Bypass verifikasi wajah ${c.full_name} dimatikan.`);
+    router.refresh();
+  }
+
   async function unlock() {
     if (!unlocking) return;
     const c = unlocking;
@@ -253,6 +284,7 @@ export default function CitizensClient({ initial, locks = {} }: { initial: Citiz
                   <th>Lahir</th>
                   <th>Alamat</th>
                   <th>Status</th>
+                  <th>Bypass wajah</th>
                   <th>Dibuat</th>
                   <th aria-label="Aksi" />
                 </tr>
@@ -308,6 +340,27 @@ export default function CitizensClient({ initial, locks = {} }: { initial: Citiz
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td>
+                      {meSuper ? (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={bypassSet.has(c.nik)}
+                          aria-label={`${bypassSet.has(c.nik) ? "Matikan" : "Aktifkan"} bypass verifikasi wajah ${c.full_name}`}
+                          title={bypassSet.has(c.nik) ? "Bypass aktif — klik untuk mematikan" : "Klik untuk bypass verifikasi wajah (demo)"}
+                          className={`switch${bypassSet.has(c.nik) ? " on" : ""}`}
+                          onClick={() => {
+                            setError("");
+                            setBypassPw("");
+                            setBypassing(c);
+                          }}
+                        >
+                          <span className="knob" />
+                        </button>
+                      ) : (
+                        <span className={`badge ${bypassSet.has(c.nik) ? "pending" : "off"}`}>{bypassSet.has(c.nik) ? "Aktif" : "Mati"}</span>
+                      )}
                     </td>
                     <td>{formatDateTime(c.created_at)}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
@@ -449,6 +502,41 @@ export default function CitizensClient({ initial, locks = {} }: { initial: Citiz
               <button type="button" className="btn" onClick={() => { setEditing(null); setForm(null); }}>Batal</button>
               <button className="btn primary" disabled={busy || photoBusy || form.full_name.trim().length < 2}>
                 {busy ? "Menyimpan…" : "Simpan profil"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {bypassing && (
+        <Modal
+          title={bypassSet.has(bypassing.nik) ? "Matikan bypass verifikasi wajah?" : "Aktifkan bypass verifikasi wajah?"}
+          sub={
+            bypassSet.has(bypassing.nik)
+              ? `${bypassing.full_name} (${maskNik(bypassing.nik)}) kembali wajib verifikasi wajah saat login.`
+              : `${bypassing.full_name} (${maskNik(bypassing.nik)}) bisa masuk ke aplikasi hanya dengan NIK, tanpa verifikasi wajah. Pakai hanya untuk demo/penjurian dan matikan setelahnya.`
+          }
+          onClose={() => setBypassing(null)}
+        >
+          <form onSubmit={submitBypass} autoComplete="off">
+            {error && <div className="alert error" role="alert">{error}</div>}
+            <div className="field">
+              <label htmlFor="bpw">Kata sandi Anda (konfirmasi)</label>
+              <input
+                id="bpw"
+                type="password"
+                className="input"
+                value={bypassPw}
+                onChange={(e) => setBypassPw(e.target.value)}
+                autoComplete="current-password"
+                required
+                autoFocus
+              />
+            </div>
+            <div className="actions">
+              <button type="button" className="btn" onClick={() => setBypassing(null)}>Batal</button>
+              <button className="btn primary" disabled={busy}>
+                {busy ? "Memproses…" : bypassSet.has(bypassing.nik) ? "Ya, matikan bypass" : "Ya, aktifkan bypass"}
               </button>
             </div>
           </form>

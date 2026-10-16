@@ -6,12 +6,14 @@ import { ADMIN_NAV } from "@/lib/nav";
 import { NavPendingProvider, PendingArea } from "@/components/NavPending";
 import StepUpGate from "@/components/StepUpGate";
 import { needsStaffFace } from "@/lib/staffFace";
+import { isBypassed } from "@/lib/faceBypass";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/support/reports");
   if (!(await staffFaceVerified(user))) redirect("/verify-face");
+  const stepUp = needsStaffFace(user) && !(await isBypassed("staff", user.id));
 
   return (
     <NavPendingProvider>
@@ -19,7 +21,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <Sidebar title="Admin Panel" items={ADMIN_NAV} user={user} />
         <main className="main"><PendingArea>{children}</PendingArea></main>
       </div>
-      {needsStaffFace(user) && <StepUpGate name={user.full_name} />}
+      {stepUp && <StepUpGate name={user.full_name} />}
     </NavPendingProvider>
   );
 }

@@ -44,6 +44,10 @@ export const getCurrentUser = cache(async (): Promise<Profile | null> => {
 
 type Guard = { user: Profile; error?: undefined } | { user?: undefined; error: NextResponse };
 
+export function dropSessionsFor(userId: string) {
+  for (const [k, v] of sessionCache) if (v.profile.id === userId) sessionCache.delete(k);
+}
+
 export async function guard(roles: Role[], opts: { face?: boolean; stepUp?: boolean } = {}): Promise<Guard> {
   const user = await getCurrentUser();
   if (!user) return { error: NextResponse.json({ error: "Sesi berakhir. Silakan masuk kembali." }, { status: 401 }) };
