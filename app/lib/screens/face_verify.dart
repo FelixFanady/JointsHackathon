@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -12,6 +11,8 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import '../web_face_camera_stub.dart'
+    if (dart.library.js_interop) '../web_face_camera.dart';
 
 class FaceScreen extends StatefulWidget {
   const FaceScreen({super.key, required this.nik, required this.name, required this.enroll});
@@ -30,6 +31,10 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
 
   CameraController? _cam;
   CameraDescription? _front;
+  WebFaceCamera? _webCamera;
+  Future<void> _cameraClosing = Future.value();
+  bool _openingCamera = false;
+  bool _cameraSuspended = false;
   final _detector = FaceDetector(
     options: FaceDetectorOptions(
       enableClassification: true,
@@ -65,34 +70,60 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _deadline?.cancel();
-    _stopCamera();
+    if (_openingCamera) {
+      _webCamera?.dispose();
+    } else {
+      unawaited(_stopCamera());
+    }
     if (!kIsWeb) _detector.close();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+    // The browser permission prompt can take focus while the tab stays visible.
+    if (state == AppLifecycleState.hidden ||
+        (!kIsWeb && (state == AppLifecycleState.inactive || state == AppLifecycleState.paused))) {
+      _cameraSuspended = true;
       _deadline?.cancel();
-      _stopCamera();
-    } else if (state == AppLifecycleState.resumed && _phase == _Phase.liveness) {
-      _start();
+      if (_phase == _Phase.liveness) {
+        setState(() {
+          _phase = _Phase.starting;
+          _hint = 'Menyiapkan kamera…';
+        });
+      }
+      if (!_openingCamera) unawaited(_stopCamera());
+    } else if (state == AppLifecycleState.resumed && _cameraSuspended) {
+      _cameraSuspended = false;
+      if (_phase == _Phase.starting) unawaited(_start());
     }
   }
 
-  Future<void> _stopCamera() async {
+  Future<void> _stopCamera() {
+    _webCamera?.dispose();
+    _webCamera = null;
     final c = _cam;
     _cam = null;
-    if (c == null) return;
+    if (c != null) _cameraClosing = _disposeCamera(c);
+    return _cameraClosing;
+  }
+
+  Future<void> _disposeCamera(CameraController c) async {
     try {
       if (c.value.isStreamingImages) await c.stopImageStream();
     } catch (_) {}
-    await c.dispose();
+    try {
+      await c.dispose();
+    } catch (e) {
+      debugPrint('camera dispose error: $e');
+    }
   }
 
+  bool get _canOpenCamera => mounted && !_cameraSuspended;
 
   Future<void> _start() async {
-    await _stopCamera();
+    if (!_canOpenCamera || _openingCamera) return;
+    _openingCamera = true;
     final rest = [_Step.blink, _Step.turn, _Step.smile]..shuffle(Random.secure());
     setState(() {
       _phase = _Phase.starting;
@@ -107,23 +138,30 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
       _hint = 'Menyiapkan kamera…';
     });
     try {
-      _front ??= (await availableCameras()).firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.front,
-        orElse: () => throw CameraException('NoFrontCamera', 'Kamera depan tidak ditemukan.'),
-      );
-      final cam = CameraController(
-        _front!,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: kIsWeb ? null : (Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888),
-      );
-      await cam.initialize();
-      if (!mounted) {
-        await cam.dispose();
-        return;
+      await _stopCamera();
+      if (!_canOpenCamera) return;
+      if (kIsWeb) {
+        final camera = WebFaceCamera();
+        _webCamera = camera;
+        await camera.initialize();
+      } else {
+        _front ??= (await availableCameras()).firstWhere(
+          (c) => c.lensDirection == CameraLensDirection.front,
+          orElse: () => throw CameraException('NoFrontCamera', 'Kamera depan tidak ditemukan.'),
+        );
+        if (!_canOpenCamera) return;
+        final cam = CameraController(
+          _front!,
+          ResolutionPreset.medium,
+          enableAudio: false,
+          imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
+        );
+        _cam = cam;
+        await cam.initialize();
+        if (!_canOpenCamera) return;
+        await cam.startImageStream(_onFrame);
       }
-      _cam = cam;
-      if (!kIsWeb) await cam.startImageStream(_onFrame);
+      if (!_canOpenCamera) return;
       _deadline?.cancel();
       _deadline = Timer(kIsWeb ? const Duration(minutes: 2) : _timeLimit, () {
         if (_phase == _Phase.liveness) _fail('Waktu habis. Ikuti petunjuk di layar lalu coba lagi.');
@@ -134,15 +172,19 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
       });
     } on CameraException catch (e) {
       final denied = e.code.contains('Denied') || e.code.contains('denied');
-      _fail(denied ? 'Izin kamera ditolak. Izinkan kamera di pengaturan aplikasi.' : (e.description ?? 'Kamera tidak dapat dibuka.'));
+      if (_canOpenCamera) _fail(denied ? 'Izin kamera ditolak. Izinkan kamera di pengaturan aplikasi.' : (e.description ?? 'Kamera tidak dapat dibuka.'));
     } catch (_) {
-      _fail('Kamera tidak dapat dibuka.');
+      if (_canOpenCamera) _fail('Kamera tidak dapat dibuka.');
+    } finally {
+      if (_phase != _Phase.liveness || !_canOpenCamera) await _stopCamera();
+      _openingCamera = false;
+      if (_phase == _Phase.starting && _canOpenCamera) unawaited(_start());
     }
   }
 
   void _fail(String msg, {bool canRetry = true}) {
     _deadline?.cancel();
-    _stopCamera();
+    unawaited(_stopCamera());
     if (!mounted) return;
     setState(() {
       _phase = _Phase.error;
@@ -308,7 +350,8 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
 
   Future<void> _captureAndSend() async {
     final cam = _cam;
-    if (cam == null) return;
+    final webCamera = _webCamera;
+    if (_phase != _Phase.liveness || (cam == null && webCamera == null)) return;
     _deadline?.cancel();
     setState(() {
       _phase = _Phase.sending;
@@ -316,16 +359,21 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
     });
     String b64;
     try {
-      if (cam.value.isStreamingImages) await cam.stopImageStream();
-      final shot = await cam.takePicture();
-      final bytes = await shot.readAsBytes();
-      if (!kIsWeb) unawaited(File(shot.path).delete().then((_) {}, onError: (_) {}));
-      b64 = base64Encode(bytes);
+      if (webCamera != null) {
+        b64 = webCamera.takePictureBase64();
+      } else {
+        if (cam!.value.isStreamingImages) await cam.stopImageStream();
+        final shot = await cam.takePicture();
+        final bytes = await shot.readAsBytes();
+        unawaited(File(shot.path).delete().then((_) {}, onError: (_) {}));
+        b64 = base64Encode(bytes);
+      }
     } catch (_) {
       _fail('Gagal mengambil foto. Coba lagi.');
       return;
     }
     await _stopCamera();
+    if (!mounted) return;
 
     try {
       final r = _enroll ? await Api.faceEnroll(widget.nik, b64) : await Api.faceVerify(widget.nik, b64);
@@ -367,9 +415,18 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final cam = _cam;
-    final showPreview = cam != null && cam.value.isInitialized && (_phase == _Phase.liveness || _phase == _Phase.starting);
     const d = 260.0;
+    final cam = _cam;
+    Widget? preview;
+    if (_phase == _Phase.liveness) {
+      preview = _webCamera?.buildPreview();
+      if (cam != null) {
+        preview = FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(width: d, height: d * cam.value.aspectRatio, child: CameraPreview(cam)),
+        );
+      }
+    }
     final progress = _steps.isEmpty ? 0.0 : (_phase == _Phase.liveness ? _stepIndex / _steps.length : (_phase == _Phase.starting ? 0.0 : 1.0));
 
     return Scaffold(
@@ -388,18 +445,13 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
               SizedBox(
                 width: d + 16,
                 height: d + 16,
-                child: CircularProgressIndicator(value: _phase == _Phase.sending ? null : progress, strokeWidth: 6, color: _ringColor, backgroundColor: C.field),
+                child: CircularProgressIndicator(value: _phase == _Phase.starting || _phase == _Phase.sending ? null : progress, strokeWidth: 6, color: _ringColor, backgroundColor: C.field),
               ),
               ClipOval(
                 child: SizedBox(
                   width: d,
                   height: d,
-                  child: showPreview
-                      ? FittedBox(
-                          fit: BoxFit.cover,
-                          child: SizedBox(width: d, height: d * cam!.value.aspectRatio, child: CameraPreview(cam)),
-                        )
-                      : Container(color: C.field, child: Icon(_resultIcon, size: 96, color: _ringColor)),
+                  child: preview ?? Container(color: C.field, child: Icon(_resultIcon, size: 96, color: _ringColor)),
                 ),
               ),
             ]),
