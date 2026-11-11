@@ -7,3 +7,5 @@ next-env.d.ts
 *.tsbuildinfo
 
 .next-build
+public/face-landmarker/vision_bundle.mjs
+public/face-landmarker/wasm/

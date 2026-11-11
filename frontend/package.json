@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "npm run prepare:face-landmarker",
     "dev": "next dev -H 127.0.0.1 -p 3000",
+    "prebuild": "npm run prepare:face-landmarker",
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 3000",
-    "prod": "next build && next start -H 127.0.0.1 -p 3000",
+    "prod": "npm run build && npm run start",
+    "prepare:face-landmarker": "node scripts/prepare-face-landmarker.mjs",
     "typecheck": "tsc --noEmit",
     "create-admin": "node scripts/create-admin.mjs",
     "seed-demo": "node scripts/seed-demo.mjs",
@@ -14,6 +17,7 @@
     "encrypt-data": "node scripts/encrypt-settings.mjs"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.32",
     "@supabase/supabase-js": "2.117.3",
     "leaflet": "1.9.4",
     "next": "15.5.27",

@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../api.dart';
+import '../face_sample.dart';
 import '../theme.dart';
 import '../web_face_camera_stub.dart'
     if (dart.library.js_interop) '../web_face_camera.dart';
@@ -50,6 +51,7 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
   int _stepIndex = 0;
   int _okFrames = 0;
   int _blinkStage = 0;
+  bool _gestureReady = false;
   int? _trackingId;
   String _hint = '';
   String? _message;
@@ -58,6 +60,7 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
   bool _busy = false;
   DateTime _lastFrame = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _deadline;
+  Timer? _webFrames;
 
   @override
   void initState() {
@@ -100,6 +103,7 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _stopCamera() {
+    _webFrames?.cancel();
     _webCamera?.dispose();
     _webCamera = null;
     final c = _cam;
@@ -127,15 +131,16 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
     final rest = [_Step.blink, _Step.turn, _Step.smile]..shuffle(Random.secure());
     setState(() {
       _phase = _Phase.starting;
-      _steps = kIsWeb ? const [_Step.hold] : [_Step.center, ...rest.take(2), _Step.hold];
+      _steps = [_Step.center, ...rest.take(2), _Step.hold];
       _stepIndex = 0;
       _okFrames = 0;
       _blinkStage = 0;
+      _gestureReady = false;
       _trackingId = null;
       _message = null;
       _confidence = null;
       _canRetry = true;
-      _hint = 'Menyiapkan kamera…';
+      _hint = kIsWeb ? 'Menyiapkan pemeriksaan wajah…' : 'Menyiapkan kamera…';
     });
     try {
       await _stopCamera();
@@ -163,13 +168,17 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
       }
       if (!_canOpenCamera) return;
       _deadline?.cancel();
-      _deadline = Timer(kIsWeb ? const Duration(minutes: 2) : _timeLimit, () {
+      _deadline = Timer(_timeLimit, () {
         if (_phase == _Phase.liveness) _fail('Waktu habis. Ikuti petunjuk di layar lalu coba lagi.');
       });
       setState(() {
         _phase = _Phase.liveness;
-        _hint = kIsWeb ? 'Tatap kamera, lalu tekan Ambil Foto' : _hintFor(_steps.first);
+        _hint = _hintFor(_steps.first);
       });
+      final webCamera = _webCamera;
+      if (webCamera != null) {
+        _webFrames = Timer.periodic(const Duration(milliseconds: 60), (_) => _onWebFrame(webCamera));
+      }
     } on CameraException catch (e) {
       final denied = e.code.contains('Denied') || e.code.contains('denied');
       if (_canOpenCamera) _fail(denied ? 'Izin kamera ditolak. Izinkan kamera di pengaturan aplikasi.' : (e.description ?? 'Kamera tidak dapat dibuka.'));
@@ -221,6 +230,29 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
     }
   }
 
+  void _onWebFrame(WebFaceCamera camera) {
+    if (_phase != _Phase.liveness) return;
+    try {
+      final frame = camera.detectFaces();
+      if (frame == null) return;
+      final face = frame.face;
+      if (face == null) {
+        _stepIndex = 0;
+        _okFrames = 0;
+        _blinkStage = 0;
+        _gestureReady = false;
+        _showStepHint(frame.count > 1 ? 'Pastikan hanya satu wajah di kamera' : 'Wajah tidak terlihat');
+      } else {
+        _showStepHint(_advance(face));
+      }
+    } catch (e) {
+      debugPrint('web face frame error: $e');
+      _fail(e is CameraException
+          ? (e.description ?? 'Kamera tidak dapat dibaca. Coba lagi.')
+          : 'Pemeriksaan gerakan wajah gagal. Coba lagi.');
+    }
+  }
+
   void _evaluate(List<Face> faces, double shortSide) {
     String? hint;
     if (faces.isEmpty) {
@@ -237,23 +269,30 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
         hint = 'Wajah berganti. Ulangi dari awal.';
       } else {
         _trackingId ??= f.trackingId;
-        hint = _advance(f, shortSide);
+        hint = _advance((
+          yaw: f.headEulerAngleY ?? 0,
+          pitch: f.headEulerAngleX ?? 0,
+          size: f.boundingBox.width / shortSide,
+          leftEyeOpen: f.leftEyeOpenProbability,
+          rightEyeOpen: f.rightEyeOpenProbability,
+          smile: f.smilingProbability ?? 0,
+        ));
       }
     }
+    _showStepHint(hint);
+  }
+
+  void _showStepHint(String? hint) {
     if (_phase == _Phase.liveness) setState(() => _hint = hint ?? _hintFor(_steps[_stepIndex]));
   }
 
-  String? _advance(Face f, double shortSide) {
-    final yaw = f.headEulerAngleY ?? 0;
-    final pitch = f.headEulerAngleX ?? 0;
-    final size = f.boundingBox.width / shortSide;
-    final left = f.leftEyeOpenProbability;
-    final right = f.rightEyeOpenProbability;
-    final smile = f.smilingProbability ?? 0;
+  String? _advance(FaceSample face) {
+    final (:yaw, :pitch, :size, leftEyeOpen: left, rightEyeOpen: right, :smile) = face;
     final centred = yaw.abs() < 12 && pitch.abs() < 15;
     final step = _steps[_stepIndex];
 
     if (step == _Step.center || step == _Step.hold) {
+      if (kIsWeb && (size < 0.30 || size > 0.95 || !centred)) _okFrames = 0;
       if (size < 0.30) return 'Dekatkan wajah ke kamera';
       if (size > 0.95) return 'Jauhkan sedikit wajah dari kamera';
       if (!centred) return 'Hadapkan wajah lurus ke kamera';
@@ -265,23 +304,29 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
         done = ++_okFrames >= 3;
       case _Step.blink:
         if (left == null || right == null) return 'Pastikan mata terlihat jelas';
-        final open = left > 0.6 && right > 0.6;
-        final closed = left < 0.25 && right < 0.25;
+        final open = left > (kIsWeb ? 0.7 : 0.6) && right > (kIsWeb ? 0.7 : 0.6);
+        final closed = left < (kIsWeb ? 0.5 : 0.25) && right < (kIsWeb ? 0.5 : 0.25);
         if (_blinkStage == 0 && open) _blinkStage = 1;
         if (_blinkStage == 1 && closed) _blinkStage = 2;
         done = _blinkStage == 2 && open;
       case _Step.turn:
-        done = yaw.abs() > 25;
+        if (kIsWeb && centred) _gestureReady = true;
+        done = (!kIsWeb || _gestureReady) && yaw.abs() > 25;
       case _Step.smile:
-        done = smile > 0.8;
+        if (kIsWeb && smile < 0.25) _gestureReady = true;
+        done = (!kIsWeb || _gestureReady) && smile > (kIsWeb ? 0.5 : 0.8);
       case _Step.hold:
         final eyesOpen = (left ?? 1) > 0.5 && (right ?? 1) > 0.5;
-        if (!eyesOpen) return 'Buka mata Anda';
-        done = ++_okFrames >= 4;
+        if (!eyesOpen) {
+          if (kIsWeb) _okFrames = 0;
+          return 'Buka mata Anda';
+        }
+        done = ++_okFrames >= (kIsWeb ? 7 : 4);
     }
     if (done) {
       HapticFeedback.lightImpact();
       _okFrames = 0;
+      _gestureReady = false;
       if (_stepIndex == _steps.length - 1) {
         _captureAndSend();
       } else {
@@ -475,10 +520,6 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
               ),
             ],
             const Spacer(),
-            if (kIsWeb && _phase == _Phase.liveness) ...[
-              PrimaryButton(label: 'Ambil Foto', icon: Icons.photo_camera, onPressed: _captureAndSend),
-              const SizedBox(height: 8),
-            ],
             if (_phase == _Phase.notMatched || _phase == _Phase.error) ...[
               if (_canRetry) PrimaryButton(label: 'Coba Lagi', icon: Icons.refresh, onPressed: _start),
               const SizedBox(height: 8),
@@ -525,7 +566,7 @@ class _FaceScreenState extends State<FaceScreen> with WidgetsBindingObserver {
   String? get _subtitle {
     final pct = _confidence == null ? null : '${(_confidence! * 100).round()}%';
     return switch (_phase) {
-      _Phase.liveness => kIsWeb ? 'Pastikan wajah terang, tanpa masker, dan hanya satu wajah di kamera.' : 'Langkah ${_stepIndex + 1} dari ${_steps.length}',
+      _Phase.liveness => 'Langkah ${_stepIndex + 1} dari ${_steps.length}',
       _Phase.matched => _enroll ? 'Masuk sebagai ${widget.name}…' : 'Tingkat kecocokan $pct',
       _Phase.notMatched => 'Tingkat kecocokan $pct. Pastikan wajah terang, tanpa masker, lalu coba lagi.',
       _Phase.error => _message,

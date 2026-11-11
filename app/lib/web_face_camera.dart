@@ -4,6 +4,26 @@ import 'package:camera/camera.dart' show CameraException;
 import 'package:flutter/widgets.dart';
 import 'package:web/web.dart' as web;
 
+import 'face_sample.dart';
+
+@JS('createSiagaKuFaceDetector')
+external JSPromise<_FaceDetector> _createFaceDetector();
+
+extension type _FaceDetector(JSObject _) implements JSObject {
+  external _FaceFrame detect(web.HTMLVideoElement video, double timestamp);
+  external void close();
+}
+
+extension type _FaceFrame(JSObject _) implements JSObject {
+  external int get count;
+  external double get size;
+  external double get yaw;
+  external double get pitch;
+  external double get leftEyeOpen;
+  external double get rightEyeOpen;
+  external double get smile;
+}
+
 class WebFaceCamera {
   static const _haveCurrentData = 2;
 
@@ -15,9 +35,26 @@ class WebFaceCamera {
     ..style.objectFit = 'cover'
     ..style.transform = 'scaleX(-1)';
   web.MediaStream? _stream;
+  _FaceDetector? _detector;
+  double _lastVideoTime = -1;
   bool _disposed = false;
 
   Future<void> initialize() async {
+    try {
+      await _createFaceDetector().toDart.then((detector) {
+        if (_disposed) {
+          detector.close();
+        } else {
+          _detector = detector;
+        }
+      }).timeout(const Duration(seconds: 30));
+    } catch (e) {
+      debugPrint('web face detector initialization error: $e');
+      throw CameraException('FaceDetectorUnavailable',
+          'Pemeriksaan gerakan wajah tidak dapat dimuat. Coba lagi.');
+    }
+    if (_disposed) return;
+
     final stream = await _openStream();
     if (_disposed) {
       _stopTracks(stream);
@@ -65,6 +102,29 @@ class WebFaceCamera {
       _video.videoWidth > 0 &&
       _video.videoHeight > 0;
 
+  WebFaceFrame? detectFaces() {
+    if (_stream?.active != true) {
+      throw CameraException('CameraStopped', 'Kamera terputus. Coba lagi.');
+    }
+    final time = _video.currentTime;
+    if (!_hasFrame || time == _lastVideoTime) return null;
+    _lastVideoTime = time;
+    final frame = _detector!.detect(_video, web.window.performance.now());
+    return (
+      count: frame.count,
+      face: frame.count != 1
+          ? null
+          : (
+              size: frame.size,
+              yaw: frame.yaw,
+              pitch: frame.pitch,
+              leftEyeOpen: frame.leftEyeOpen,
+              rightEyeOpen: frame.rightEyeOpen,
+              smile: frame.smile,
+            ),
+    );
+  }
+
   Widget buildPreview() => HtmlElementView.fromTagName(
         tagName: 'div',
         onElementCreated: (element) =>
@@ -89,10 +149,14 @@ class WebFaceCamera {
   void dispose() {
     _disposed = true;
     final stream = _stream;
-    if (stream == null) return;
     _stream = null;
-    _stopTracks(stream);
-    _video.srcObject = null;
+    if (stream != null) {
+      _stopTracks(stream);
+      _video.srcObject = null;
+    }
+    final detector = _detector;
+    _detector = null;
+    detector?.close();
   }
 
   static void _stopTracks(web.MediaStream stream) {
